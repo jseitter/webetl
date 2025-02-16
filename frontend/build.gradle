@@ -1,0 +1,55 @@
+plugins {
+    id 'base'
+    id 'com.github.node-gradle.node' version '7.0.1'
+}
+
+node {
+    version = '20.11.1'
+    download = true
+}
+
+task installDependencies(type: NpmTask) {
+    args = ['install']
+}
+
+task developmentRun(type: NpmTask) {
+    args = ['run', 'dev']
+    dependsOn installDependencies
+}
+
+task buildFrontend(type: NpmTask) {
+    args = ['run', 'build']
+    dependsOn installDependencies
+    outputs.dir("dist")
+    
+    doLast {
+        // Verify the build output
+        println "Frontend build completed. Files in dist:"
+        def distDir = file("dist")
+        if (!distDir.exists()) {
+            throw new GradleException("Frontend build failed - dist directory not found")
+        }
+        // Recursively list all files
+        def files = []
+        distDir.eachFileRecurse { file ->
+            if (file.isFile()) {
+                files << file
+                println " - ${file.path.replace(distDir.path + '/', '')}"
+            }
+        }
+        if (files.isEmpty()) {
+            throw new GradleException("Frontend build failed - no files found in dist")
+        }
+    }
+}
+
+// Configure the existing build task instead of creating a new one
+build {
+    dependsOn buildFrontend
+}
+
+clean {
+    delete 'dist'
+    delete 'node_modules'
+    delete buildDir
+} 

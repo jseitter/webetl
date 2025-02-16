@@ -1,0 +1,177 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.2.3'
+    id 'io.spring.dependency-management' version '1.1.4'
+    id 'application'
+    id 'distribution'
+}
+
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+// Deaktiviert den Standard-Jar-Task, sodass nur das BootJar erstellt wird
+tasks.jar {
+    enabled = false
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    implementation 'org.apache.commons:commons-compress:1.24.0'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+application {
+    mainClass = 'io.webetl.Application'
+}
+
+task compilerJar(type: Jar) {
+    archiveBaseName = 'flow-compiler'
+    archiveClassifier = ''
+    
+    manifest {
+        attributes 'Main-Class': 'io.webetl.compiler.FlowCompilerCLI'
+    }
+    
+    from sourceSets.main.output
+    
+    dependsOn configurations.runtimeClasspath
+    from {
+        configurations.runtimeClasspath.findAll { it.name.endsWith('jar') }.collect { zipTree(it) }
+    }
+    
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+bootJar {
+    archiveFileName = 'backend.jar'
+}
+distributions {
+    boot {
+        distributionBaseName = 'webetl'
+        contents {
+            duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+            from('src/dist/bin') {
+                into "bin"
+                fileMode = 0755
+                include 'start.sh'
+                include 'start.bat'
+                include 'compile.sh'
+                include 'compile.bat'
+                include 'stop.sh'
+                include 'stop.bat'
+                include 'status.sh'
+                include 'status.bat'
+            }
+        }
+    }
+}
+
+task createRelease(type: Zip) {
+    dependsOn bootDistZip
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from(zipTree(bootDistZip.archiveFile)) {
+        eachFile { fcd ->
+            def segments = fcd.relativePath.segments
+            if (segments[0] =~ /webetl.*/) {
+                segments = segments.drop(1)
+            }
+            fcd.relativePath = new RelativePath(true, segments)
+        }
+        includeEmptyDirs = false
+   }
+    destinationDirectory = file("$buildDir/release")
+    archiveFileName = "webetl-${version}.zip"
+    fileMode = 0755
+}
+
+tasks.bootDistZip.dependsOn(':frontend:build')
+
+task extractRelease {
+    dependsOn clean, createRelease
+    
+    doLast {
+        // Recreate test directory
+        def testDir = file("${buildDir}/test")
+        if (testDir.exists()) {
+            testDir.deleteDir()
+        }
+        testDir.mkdirs()
+        
+        // Extract release
+        copy {
+            from zipTree("${buildDir}/release/webetl-${version}.zip")
+            into testDir
+        }
+        
+        // Make shell script executable on Unix-like systems
+        def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
+        if (!isWindows) {
+            exec {
+                commandLine 'chmod', '+x', "${buildDir}/test/bin/start.sh"
+                commandLine 'chmod', '+x', "${buildDir}/test/bin/stop.sh"
+            }
+        }
+    }
+}
+
+task testRelease(type: JavaExec) {
+    dependsOn extractRelease
+    
+    classpath = files("${buildDir}/test/lib/backend.jar")
+    mainClass = 'io.webetl.Application'
+    
+    args = ["--data.dir=${System.getProperty('user.home')}/.webetl"]
+    
+    doFirst {
+        // Open browser after a short delay
+        Thread.start {
+            Thread.sleep(2000)
+            def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
+            if (isWindows) {
+                ['cmd', '/c', 'start', 'http://localhost:8085'].execute()
+            } else {
+                ['sh', '-c', 'open http://localhost:8085 || xdg-open http://localhost:8085'].execute()
+            }
+        }
+    }
+}
+
+task verifyJarContents(type: Exec) {
+    dependsOn bootJar
+    doFirst {
+        def jarFile = tasks.bootJar.archiveFile.get().asFile
+        println "Verifying contents of ${jarFile}"
+        commandLine 'jar', 'tf', jarFile
+    }
+}
+
+createRelease.dependsOn verifyJarContents
+
+bootJar {
+    dependsOn ':frontend:build'
+    doFirst {
+        // Ensure frontend is built and files exist
+        def distDir = project(':frontend').projectDir.toPath().resolve('dist').toFile()
+        if (!distDir.exists()) {
+            throw new GradleException("Frontend files not found in ${distDir}. Make sure frontend build succeeded.")
+        }
+        println "Found frontend files in: ${distDir.absolutePath}"
+    }
+
+    from("${project(':frontend').projectDir}/dist") {
+        into 'BOOT-INF/classes/static'
+        eachFile { file ->
+            println "Including frontend file: ${file.path}"
+        }
+    }
+}
+
+// Make sure bootJar runs after frontend:build
+bootJar.mustRunAfter(':frontend:build') 

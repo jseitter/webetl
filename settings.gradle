@@ -1,0 +1,2 @@
+rootProject.name = 'webetl'
+include 'backend', 'frontend' 
