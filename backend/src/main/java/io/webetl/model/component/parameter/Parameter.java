@@ -3,7 +3,9 @@ package io.webetl.model.component.parameter;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.Data;
 
+@Data
 @JsonTypeInfo(
     use = JsonTypeInfo.Id.NAME,
     property = "parameterType",

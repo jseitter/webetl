@@ -17,6 +17,11 @@ import java.util.ArrayList;
     @JsonSubTypes.Type(value = TransformComponent.class, name = "transform"),
     @JsonSubTypes.Type(value = DestinationComponent.class, name = "destination")
 })
+/**
+ * ETLComponent is the base class for all components in the ETL pipeline.
+ * It defines the common properties and methods for all components to be used in the UI
+ * and to be serialized to JSON.
+ */
 public class ETLComponent {
     private String id;
     private String label;
@@ -61,4 +66,6 @@ public class ETLComponent {
 
     public List<Parameter<?>> getParameters() { return parameters; }
     public void setParameters(List<Parameter<?>> parameters) { this.parameters = parameters; }
+
+
 } 

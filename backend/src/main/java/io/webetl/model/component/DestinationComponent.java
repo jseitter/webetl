@@ -1,25 +1,52 @@
 package io.webetl.model.component;
 
 import java.util.ArrayList;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
-public class DestinationComponent extends ETLComponent {
-    private String destinationType;
-    private String[] acceptedTypes;
+import io.webetl.model.data.Row;
+
+/**
+ * DestinationComponent is a component that writes data to a destination.
+ * It has only input ports.
+ */
+public class DestinationComponent extends ETLComponent implements InputQueueProvider, ExecutableComponent {
+    private final BlockingQueue<Row> inputQueue;
 
     public DestinationComponent() {
         super(null, null, null, null, "#f0fff4", new ArrayList<>());
+        this.inputQueue = new LinkedBlockingQueue<>();
     }
 
     public DestinationComponent(String id, String label, String description, String icon,
                               String destinationType, String[] acceptedTypes) {
         super(id, label, description, icon, "#f0fff4", new ArrayList<>());
-        this.destinationType = destinationType;
-        this.acceptedTypes = acceptedTypes;
+        this.inputQueue = new LinkedBlockingQueue<>();
     }
 
-    public String getDestinationType() { return destinationType; }
-    public void setDestinationType(String destinationType) { this.destinationType = destinationType; }
 
-    public String[] getAcceptedTypes() { return acceptedTypes; }
-    public void setAcceptedTypes(String[] acceptedTypes) { this.acceptedTypes = acceptedTypes; }
+
+    @Override
+    public void putRow(Row row) {
+        try {
+            inputQueue.put(row);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while putting row into queue", e);
+        }
+    }
+
+    protected Row takeRow() throws InterruptedException {
+        return inputQueue.take();
+    }
+
+    protected boolean hasRows() {
+        return !inputQueue.isEmpty();
+    }
+
+    @Override
+    public void execute(ExecutionContext context) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'execute'");
+    }
 } 
