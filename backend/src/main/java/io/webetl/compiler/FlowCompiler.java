@@ -24,7 +24,7 @@ public class FlowCompiler {
         // Generate Java source code
         String className = "Flow_" + sheet.getId().replace("-", "_");
         String sourceCode = generateSourceCode(className, sheet, verbose);
-        
+       if(verbose) System.out.println("Source code: " + sourceCode);
         // Generate CompiledFlow class
         /**
          * CompiledFlow is an abstract class that defines the execute method.
