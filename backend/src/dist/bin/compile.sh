@@ -3,9 +3,11 @@ APP_HOME="$HOME/.webetl"
 mkdir -p "$APP_HOME"
 cd "$(dirname "$0")/.."
 
-if [ "$#" -ne 2 ]; then
-    echo "Usage: compile.sh <input-sheet.json> <output.jar>"
+if [ "$#" -lt 1 ]; then
+    echo "Usage:"
+    echo "  List sheets:  compile.sh list"
+    echo "  Compile:      compile.sh compile <input-sheet.json> <output.jar> [--verbose]"
     exit 1
 fi
 
-java -cp lib/backend.jar com.example.compiler.FlowCompilerCLI "$1" "$2" 
+java -jar lib/compiler.jar "$@" 

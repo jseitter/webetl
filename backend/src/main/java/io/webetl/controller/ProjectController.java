@@ -87,7 +87,7 @@ public class ProjectController {
             @PathVariable String projectId,
             @PathVariable String sheetId) throws IOException {
         Sheet sheet = projectService.getProjectSheet(projectId, sheetId);
-        File jarFile = flowCompiler.compileToJar(sheet);
+        File jarFile = flowCompiler.compileToJar(sheet, false);
         
         return ResponseEntity.ok()
             .header(HttpHeaders.CONTENT_DISPOSITION, 

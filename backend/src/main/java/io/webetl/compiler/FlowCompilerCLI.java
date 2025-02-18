@@ -1,40 +1,104 @@
 package io.webetl.compiler;
 
-import io.webetl.model.Sheet;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.webetl.model.Sheet;
+import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 
 public class FlowCompilerCLI {
     public static void main(String[] args) {
-        if (args.length != 2) {
-            System.out.println("Usage: FlowCompilerCLI <input-sheet.json> <output.jar>");
+        if (args.length < 1) {
+            printUsage();
             System.exit(1);
         }
 
+        String command = args[0];
+        
         try {
-            String inputFile = args[0];
-            String outputFile = args[1];
-
-            // Read the sheet JSON
-            ObjectMapper mapper = new ObjectMapper();
-            Sheet sheet = mapper.readValue(Paths.get(inputFile).toFile(), Sheet.class);
-
-            // Compile the sheet
-            FlowCompiler compiler = new FlowCompiler();
-            Path jarFile = compiler.compileToJar(sheet).toPath();
-
-            // Move to desired output location
-            Files.move(jarFile, Paths.get(outputFile));
-
-            System.out.println("Successfully compiled flow to: " + outputFile);
-            System.out.println("You can run it with: java -jar " + outputFile);
+            switch (command) {
+                case "list":
+                    listSheets();
+                    break;
+                case "compile":
+                    if (args.length < 3) {
+                        System.err.println("Error: Missing arguments for compile command");
+                        printUsage();
+                        System.exit(1);
+                    }
+                    compileSheet(args[1], args[2], args.length > 3 && "--verbose".equals(args[3]));
+                    break;
+                default:
+                    System.err.println("Unknown command: " + command);
+                    printUsage();
+                    System.exit(1);
+            }
 
         } catch (Exception e) {
-            System.err.println("Error compiling flow: " + e.getMessage());
+            System.err.println("Compilation failed: " + e.getMessage());
             e.printStackTrace();
             System.exit(1);
         }
+    }
+    
+    private static void printUsage() {
+        System.err.println("Usage:");
+        System.err.println("  List sheets:  FlowCompilerCLI list");
+        System.err.println("  Compile:      FlowCompilerCLI compile <input-sheet.json> <output.jar> [--verbose]");
+    }
+    
+    private static void listSheets() throws Exception {
+        Path appDir = Paths.get(System.getProperty("user.home"), ".webetl");
+        Path projectsDir = appDir.resolve("projects");
+        
+        if (!Files.exists(projectsDir)) {
+            System.out.println("No projects found in " + projectsDir);
+            return;
+        }
+        
+        ObjectMapper mapper = new ObjectMapper();
+        
+        Files.list(projectsDir).forEach(projectDir -> {
+            if (Files.isDirectory(projectDir)) {
+                System.out.println("\nProject: " + projectDir.getFileName());
+                try {
+                    Path sheetsDir = projectDir.resolve("sheets");
+                    if (Files.exists(sheetsDir)) {
+                        Files.list(sheetsDir)
+                            .filter(p -> p.toString().endsWith(".json"))
+                            .forEach(sheetFile -> {
+                                try {
+                                    Sheet sheet = mapper.readValue(sheetFile.toFile(), Sheet.class);
+                                    System.out.printf("  - Sheet: %s (ID: %s)%n", 
+                                        sheet.getName(), sheet.getId());
+                                } catch (Exception e) {
+                                    System.out.printf("  - Error reading %s: %s%n", 
+                                        sheetFile.getFileName(), e.getMessage());
+                                }
+                            });
+                    }
+                } catch (Exception e) {
+                    System.out.println("  Error listing sheets: " + e.getMessage());
+                }
+            }
+        });
+    }
+    
+    private static void compileSheet(String inputFile, String outputFile, boolean verbose) throws Exception {
+        // Read and parse sheet
+        ObjectMapper mapper = new ObjectMapper();
+        Sheet sheet = mapper.readValue(new File(inputFile), Sheet.class);
+
+        // Compile
+        FlowCompiler compiler = new FlowCompiler();
+        File jarFile = compiler.compileToJar(sheet, verbose);
+
+        // Copy to output location
+        Files.copy(jarFile.toPath(), new File(outputFile).toPath(), 
+                  java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+
+        System.out.println("Successfully compiled to: " + outputFile);
     }
 } 
