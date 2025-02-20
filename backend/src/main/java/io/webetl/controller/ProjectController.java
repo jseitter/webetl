@@ -3,11 +3,7 @@ package io.webetl.controller;
 import io.webetl.model.Project;
 import io.webetl.model.Sheet;
 import io.webetl.service.ProjectService;
-import io.webetl.runtime.FlowExecutor;
 import io.webetl.compiler.FlowCompiler;
-import io.webetl.runtime.ExecutionResult;
-import io.webetl.runtime.ExecutionContext;
-import io.webetl.runtime.RuntimeMetrics;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -18,16 +14,15 @@ import java.io.File;
 import java.io.IOException;
 
 import java.util.List;
-
+/**
+ * ProjectController is a REST controller that provides endpoints for managing projects.
+ */
 @RestController
 @RequestMapping("/api/projects")
 public class ProjectController {
 
     @Autowired
     private ProjectService projectService;
-
-    @Autowired
-    private FlowExecutor flowExecutor;
 
     @Autowired
     private FlowCompiler flowCompiler;
@@ -67,20 +62,6 @@ public class ProjectController {
         return ResponseEntity.ok(updatedSheet);
     }
 
-    @PostMapping("/{projectId}/sheets/{sheetId}/execute")
-    public ExecutionResult executeSheet(
-            @PathVariable String projectId,
-            @PathVariable String sheetId) {
-        Sheet sheet = projectService.getProjectSheet(projectId, sheetId);
-        return flowExecutor.execute(sheet, new ExecutionContext());
-    }
-
-    @GetMapping("/{projectId}/sheets/{sheetId}/metrics")
-    public RuntimeMetrics getMetrics(
-            @PathVariable String projectId,
-            @PathVariable String sheetId) {
-        return flowExecutor.getMetrics(sheetId);
-    }
 
     @GetMapping("/{projectId}/sheets/{sheetId}/export")
     public ResponseEntity<Resource> exportJar(
