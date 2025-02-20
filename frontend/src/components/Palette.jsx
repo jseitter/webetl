@@ -86,20 +86,35 @@ function Palette({ isExecuting, onExecute, onStop }) {
   const controlFlowComponents = [
     {
       id: 'start',
-      type: 'control',
+      type: 'source',
       label: 'Start',
+      description: 'Starting point of the flow',
       backgroundColor: '#e3f2fd',
       icon: 'PlayArrowIcon',
       supportsControlFlow: true,
-      parameters: []
+      parameters: [],
+      definition: {
+        id: 'start',
+        label: 'Start',
+        icon: 'PlayArrowIcon',
+        backgroundColor: '#e3f2fd'
+      }
     },
     {
       id: 'stop',
-      type: 'control',
+      type: 'destination',
       label: 'Stop',
+      description: 'Ending point of the flow',
       backgroundColor: '#fbe9e7',
       icon: 'StopIcon',
-      supportsControlFlow: true
+      supportsControlFlow: true,
+      parameters: [],
+      definition: {
+        id: 'stop',
+        label: 'Stop',
+        icon: 'StopIcon',
+        backgroundColor: '#fbe9e7'
+      }
     }
   ];
 
@@ -166,21 +181,26 @@ function Palette({ isExecuting, onExecute, onStop }) {
       <Collapse in={openSections.controlFlow} timeout="auto">
         <List>
           {controlFlowComponents.map((component) => (
-            <ListItem
+            <Tooltip
               key={component.id}
-              button
-              draggable
-              onDragStart={(e) => onDragStart(e, component)}
-              sx={{ 
-                backgroundColor: component.backgroundColor,
-                my: 0.5,
-                mx: 1,
-                borderRadius: 1
-              }}
+              title={component.description || ''}
+              placement="right"
             >
-              <ListItemIcon>{getIcon(component.icon)}</ListItemIcon>
-              <ListItemText primary={component.label} />
-            </ListItem>
+              <ListItem
+                button
+                draggable
+                onDragStart={(e) => onDragStart(e, component)}
+                sx={{ 
+                  backgroundColor: component.backgroundColor,
+                  my: 0.5,
+                  mx: 1,
+                  borderRadius: 1
+                }}
+              >
+                <ListItemIcon>{getIcon(component.icon)}</ListItemIcon>
+                <ListItemText primary={component.label} />
+              </ListItem>
+            </Tooltip>
           ))}
         </List>
       </Collapse>
