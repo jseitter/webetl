@@ -4,8 +4,10 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
+import lombok.experimental.SuperBuilder;
 
 @Data
+@SuperBuilder
 @JsonTypeInfo(
     use = JsonTypeInfo.Id.NAME,
     property = "parameterType",
@@ -31,12 +33,15 @@ public abstract class Parameter<T> {
     @JsonProperty("required")
     private boolean required;
     
+    @JsonProperty("defaultValue")
+    private T defaultValue;
+    
     @JsonProperty("value")
     private T value;
+    
+    protected Parameter() {}
 
-    public Parameter() {}
-
-    public Parameter(String name, String label, String description, boolean required) {
+    protected Parameter(String name, String label, String description, boolean required) {
         this.name = name;
         this.label = label;
         this.description = description;

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Paper, List, ListItem, ListItemText, Typography, ListItemIcon, Divider, IconButton } from '@mui/material';
+import { Paper, List, ListItem, ListItemText, Typography, ListItemIcon, Divider, IconButton, Collapse, Tooltip } from '@mui/material';
 import StorageIcon from '@mui/icons-material/Storage';
 import FilterAltIcon from '@mui/icons-material/FilterAlt';
 import TransformIcon from '@mui/icons-material/Transform';
@@ -7,6 +7,8 @@ import SaveIcon from '@mui/icons-material/Save';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
+import ExpandLess from '@mui/icons-material/ExpandLess';
+import ExpandMore from '@mui/icons-material/ExpandMore';
 import axios from 'axios';
 
 // Map backend icon names to Material-UI icons
@@ -18,15 +20,60 @@ const iconMap = {
 };
 
 function Palette({ isExecuting, onExecute, onStop }) {
+  const [componentGroups, setComponentGroups] = useState({});
+  const [openSections, setOpenSections] = useState({
+    controlFlow: true,
+    source: true,
+    transform: true,
+    destination: true
+  });
+
+  const toggleSection = (section) => {
+    setOpenSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+  useEffect(() => {
+    const fetchComponents = async () => {
+      try {
+        const response = await axios.get('/api/components');
+        console.log('API Response:', response);
+        
+        const groups = response.data.reduce((acc, category) => {
+          const type = category.name.toLowerCase();
+          acc[type] = category.components.map(comp => ({
+            ...comp,
+            id: comp.id,
+            label: comp.label,
+            description: comp.description,
+            icon: comp.definition?.icon || 'StorageIcon',
+            backgroundColor: comp.definition?.backgroundColor || '#f0f7ff',
+            type: type
+          }));
+          return acc;
+        }, {});
+        
+        console.log('Final component groups:', groups);
+        setComponentGroups(groups);
+      } catch (error) {
+        console.error('Failed to fetch components:', error);
+      }
+    };
+    
+    fetchComponents();
+  }, []);
+
   const onDragStart = (event, component) => {
-    // Create a clean version of the component without DOM elements
     const dragData = {
       id: component.id,
       type: component.type,
       label: component.label,
       backgroundColor: component.backgroundColor,
       parameters: component.parameters || [],
-      supportsControlFlow: component.supportsControlFlow
+      supportsControlFlow: component.supportsControlFlow,
+      description: component.description
     };
     
     console.log('Dragging component:', dragData);
@@ -36,83 +83,37 @@ function Palette({ isExecuting, onExecute, onStop }) {
     event.dataTransfer.effectAllowed = 'move';
   };
 
-  const getIcon = (iconName) => {
-    const IconComponent = iconMap[iconName] || StorageIcon;
-    return <IconComponent />;
-  };
-
   const controlFlowComponents = [
     {
       id: 'start',
-      type: 'source',
+      type: 'control',
       label: 'Start',
       backgroundColor: '#e3f2fd',
-      icon: <PlayArrowIcon />,
+      icon: 'PlayArrowIcon',
       supportsControlFlow: true,
       parameters: []
     },
     {
       id: 'stop',
-      type: 'source',
+      type: 'control',
       label: 'Stop',
       backgroundColor: '#fbe9e7',
-      icon: <StopIcon />,
+      icon: 'StopIcon',
       supportsControlFlow: true
     }
   ];
 
-  const dataFlowComponents = [
-    {
-      id: 'db-source',
-      type: 'source',
-      label: 'Database Source',
-      backgroundColor: '#f0f7ff',
-      icon: <StorageIcon />,
-      parameters: [],
-      supportsControlFlow: true
-    },
-    {
-      id: 'file-source',
-      type: 'source',
-      label: 'File Source',
-      backgroundColor: '#f0f7ff',
-      icon: <InsertDriveFileIcon />,
-      parameters: [],
-      supportsControlFlow: true
-    },
-    {
-      id: 'filter',
-      type: 'transform',
-      label: 'Filter',
-      backgroundColor: '#fff7f0',
-      icon: <FilterAltIcon />,
-      parameters: []
-    },
-    {
-      id: 'map',
-      type: 'transform',
-      label: 'Map',
-      backgroundColor: '#fff7f0',
-      icon: <TransformIcon />,
-      parameters: []
-    },
-    {
-      id: 'db-dest',
-      type: 'destination',
-      label: 'Database Destination',
-      backgroundColor: '#f0fff4',
-      icon: <SaveIcon />,
-      parameters: []
-    },
-    {
-      id: 'file-dest',
-      type: 'destination',
-      label: 'File Destination',
-      backgroundColor: '#f0fff4',
-      icon: <InsertDriveFileIcon />,
-      parameters: []
-    }
-  ];
+  // Add PlayArrowIcon and StopIcon to iconMap
+  const extendedIconMap = {
+    ...iconMap,
+    'PlayArrowIcon': PlayArrowIcon,
+    'StopIcon': StopIcon
+  };
+
+  const getIcon = (iconName) => {
+    const IconComponent = extendedIconMap[iconName] || StorageIcon;
+    return <IconComponent />;
+  };
 
   return (
     <Paper sx={{ width: 240, overflow: 'auto' }}>
@@ -151,54 +152,78 @@ function Palette({ isExecuting, onExecute, onStop }) {
       </div>
 
       {/* Control Flow Section */}
-      <Typography variant="subtitle1" sx={{ p: 2, pb: 1, fontWeight: 'bold' }}>
-        Control Flow
-      </Typography>
-      <List>
-        {controlFlowComponents.map((component) => (
-          <ListItem
-            key={component.id}
-            button
-            draggable
-            onDragStart={(e) => onDragStart(e, component)}
-            sx={{ 
-              backgroundColor: component.backgroundColor,
-              my: 0.5,
-              mx: 1,
-              borderRadius: 1
-            }}
-          >
-            <ListItemIcon>{component.icon}</ListItemIcon>
-            <ListItemText primary={component.label} />
-          </ListItem>
-        ))}
-      </List>
+      <ListItem 
+        button 
+        onClick={() => toggleSection('controlFlow')}
+        sx={{ p: 2, pb: 1 }}
+      >
+        <ListItemText 
+          primary="Control Flow" 
+          primaryTypographyProps={{ fontWeight: 'bold' }}
+        />
+        {openSections.controlFlow ? <ExpandLess /> : <ExpandMore />}
+      </ListItem>
+      <Collapse in={openSections.controlFlow} timeout="auto">
+        <List>
+          {controlFlowComponents.map((component) => (
+            <ListItem
+              key={component.id}
+              button
+              draggable
+              onDragStart={(e) => onDragStart(e, component)}
+              sx={{ 
+                backgroundColor: component.backgroundColor,
+                my: 0.5,
+                mx: 1,
+                borderRadius: 1
+              }}
+            >
+              <ListItemIcon>{getIcon(component.icon)}</ListItemIcon>
+              <ListItemText primary={component.label} />
+            </ListItem>
+          ))}
+        </List>
+      </Collapse>
 
       <Divider sx={{ my: 1 }} />
 
-      {/* Data Flow Section */}
-      <Typography variant="subtitle1" sx={{ p: 2, pb: 1, fontWeight: 'bold' }}>
-        Data Flow
-      </Typography>
-      <List>
-        {dataFlowComponents.map((component) => (
-          <ListItem
-            key={component.id}
-            button
-            draggable
-            onDragStart={(e) => onDragStart(e, component)}
-            sx={{ 
-              backgroundColor: component.backgroundColor,
-              my: 0.5,
-              mx: 1,
-              borderRadius: 1
-            }}
+      {/* Dynamic Component Groups */}
+      {Object.entries(componentGroups).map(([type, components]) => (
+        <div key={type}>
+          <ListItem 
+            button 
+            onClick={() => toggleSection(type)}
+            sx={{ p: 2, pb: 1 }}
           >
-            <ListItemIcon>{component.icon}</ListItemIcon>
-            <ListItemText primary={component.label} />
+            <ListItemText 
+              primary={`${type.charAt(0).toUpperCase() + type.slice(1)}s`}
+              primaryTypographyProps={{ fontWeight: 'bold' }}
+            />
+            {openSections[type] ? <ExpandLess /> : <ExpandMore />}
           </ListItem>
-        ))}
-      </List>
+          <Collapse in={openSections[type]} timeout="auto">
+            <List>
+              {components.map((component) => (
+                <Tooltip 
+                  key={component.id}
+                  title={component.description || ''}
+                  placement="right"
+                >
+                  <ListItem
+                    button
+                    draggable
+                    onDragStart={(e) => onDragStart(e, component)}
+                    sx={{ backgroundColor: component.backgroundColor || '#f0f7ff', my: 0.5, mx: 1, borderRadius: 1 }}
+                  >
+                    <ListItemIcon>{getIcon(component.icon)}</ListItemIcon>
+                    <ListItemText primary={component.label} />
+                  </ListItem>
+                </Tooltip>
+              ))}
+            </List>
+          </Collapse>
+        </div>
+      ))}
     </Paper>
   );
 }

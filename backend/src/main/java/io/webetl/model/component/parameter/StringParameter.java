@@ -1,5 +1,14 @@
 package io.webetl.model.component.parameter;
 
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
+import lombok.experimental.SuperBuilder;
+import com.fasterxml.jackson.annotation.JsonTypeName;
+
+@SuperBuilder
+@JsonTypeName("string")
+@EqualsAndHashCode(callSuper = true)
+@ToString(callSuper = true)
 public class StringParameter extends Parameter<String> {
     private int maxLength;
     private String pattern;

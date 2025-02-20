@@ -13,7 +13,7 @@ import io.webetl.model.data.Row;
  * It can also just passthrough the data and e.g log it.
  * It has Input and Output ports to connect to other components.
  */
-public class TransformComponent extends ETLComponent implements InputQueueProvider, OutputQueueProvider, ExecutableComponent {
+public abstract class TransformComponent extends ETLComponent implements InputQueueProvider, OutputQueueProvider, ExecutableComponent {
     private String transformationType;
     private String[] inputTypes;
     private String[] outputTypes;
@@ -71,9 +71,4 @@ public class TransformComponent extends ETLComponent implements InputQueueProvid
         }
     }
 
-    @Override
-    public void execute(ExecutionContext context) {
-        // Implementation will be provided in concrete classes
-        throw new UnsupportedOperationException("Unimplemented method 'execute'");
-    }
 } 

@@ -1,5 +1,14 @@
 package io.webetl.model.component.parameter;
 
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
+import lombok.experimental.SuperBuilder;
+import com.fasterxml.jackson.annotation.JsonTypeName;
+
+@SuperBuilder
+@JsonTypeName("number")
+@EqualsAndHashCode(callSuper = true)
+@ToString(callSuper = true)
 public class NumberParameter extends Parameter<Number> {
     private double min;
     private double max;

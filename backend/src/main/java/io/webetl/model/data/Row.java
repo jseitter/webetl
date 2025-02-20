@@ -16,6 +16,12 @@ public class Row {
         this.values = new HashMap<>();
     }
 
+    public Row(String line) {
+        this.values = new HashMap<>();
+        this.values.put("line", line);
+        this.metadata = new RowMetadata();
+    }
+
     public void setValue(String column, Object value) {
         if (schema != null && !schema.validateValue(column, value)) {
             throw new IllegalArgumentException(

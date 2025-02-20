@@ -10,7 +10,7 @@ import io.webetl.model.data.Row;
  * DestinationComponent is a component that writes data to a destination.
  * It has only input ports.
  */
-public class DestinationComponent extends ETLComponent implements InputQueueProvider, ExecutableComponent {
+public abstract class DestinationComponent extends ETLComponent implements InputQueueProvider, ExecutableComponent {
     private final BlockingQueue<Row> inputQueue;
 
     public DestinationComponent() {
@@ -44,9 +44,4 @@ public class DestinationComponent extends ETLComponent implements InputQueueProv
         return !inputQueue.isEmpty();
     }
 
-    @Override
-    public void execute(ExecutionContext context) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'execute'");
-    }
 } 

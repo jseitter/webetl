@@ -9,7 +9,7 @@ import io.webetl.model.data.Row;
  * SourceComponent is a component that reads data from a source.
  * It has only output ports.
  */
-public class SourceComponent extends ETLComponent implements ExecutableComponent, OutputQueueProvider {
+public abstract class SourceComponent extends ETLComponent implements ExecutableComponent, OutputQueueProvider {
     private String sourceType;
     private boolean supportsControlFlow;
     private final List<InputQueueProvider> outputQueues;
@@ -32,12 +32,6 @@ public class SourceComponent extends ETLComponent implements ExecutableComponent
 
     public boolean isSupportsControlFlow() { return supportsControlFlow; }
     public void setSupportsControlFlow(boolean supportsControlFlow) { this.supportsControlFlow = supportsControlFlow; }
-
-    @Override
-    public void execute(ExecutionContext context) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'execute'");
-    }
 
     @Override
     public void registerInputQueue(InputQueueProvider provider) {
