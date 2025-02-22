@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Box, Tab, Tabs, IconButton, Tooltip, Snackbar, Alert, Paper, AppBar, Toolbar, Typography, TextField, Button } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
+import BuildIcon from '@mui/icons-material/Build';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddIcon from '@mui/icons-material/Add';
 import Sheet from './Sheet';
+import CompileDialog from './CompileDialog';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -19,6 +21,7 @@ function ETLDesigner() {
   const [currentSheet, setCurrentSheet] = useState(null);
   const [editingSheetName, setEditingSheetName] = useState(false);
   const [sheetName, setSheetName] = useState('');
+  const [compileDialogOpen, setCompileDialogOpen] = useState(false);
 
   // Check backend health periodically
   useEffect(() => {
@@ -289,6 +292,17 @@ function ETLDesigner() {
           ))}
           <Tab label="+" onClick={handleAddSheet} />
         </Tabs>
+        <Tooltip title="Compile">
+          <span>
+            <IconButton
+              onClick={() => setCompileDialogOpen(true)}
+              disabled={!isBackendAvailable || !sheets[activeSheet]}
+              sx={{ mr: 1 }}
+            >
+              <BuildIcon />
+            </IconButton>
+          </span>
+        </Tooltip>
         <Tooltip title="Save (Ctrl+S)">
           <span>
             <IconButton 
@@ -330,6 +344,14 @@ function ETLDesigner() {
           {snackbar.message}
         </Alert>
       </Snackbar>
+      {currentSheet && (
+        <CompileDialog
+          open={compileDialogOpen}
+          onClose={() => setCompileDialogOpen(false)}
+          sheetId={currentSheet.id}
+          projectId={projectId}
+        />
+      )}
     </Box>
   );
 }
