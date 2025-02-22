@@ -79,7 +79,7 @@ function CustomNode({ data, type, id }) {
       }}
     >
       {/* Control flow handles */}
-      {isSource && componentData?.supportsControlFlow && (
+      {(isSource || isDestination) && componentData?.supportsControlFlow && (
         <>
           {isStart ? (
             // Start node: only output
@@ -88,6 +88,7 @@ function CustomNode({ data, type, id }) {
               position={Position.Bottom}
               style={controlHandleStyle}
               id="control-flow-out"
+              title="Control Flow Out"
             />
           ) : isStop ? (
             // Stop node: only input
@@ -96,6 +97,7 @@ function CustomNode({ data, type, id }) {
               position={Position.Top}
               style={controlHandleStyle}
               id="control-flow-in"
+              title="Control Flow In"
             />
           ) : (
             // Other source nodes: both input and output - REVERSED ORDER
@@ -105,12 +107,14 @@ function CustomNode({ data, type, id }) {
                 position={Position.Top}
                 style={controlHandleStyle}
                 id="control-flow-in"
+                title="Control Flow In"
               />
               <Handle
                 type="source"
                 position={Position.Bottom}
                 style={controlHandleStyle}
                 id="control-flow-out"
+                title="Control Flow Out"
               />
             </>
           )}
@@ -148,6 +152,7 @@ function CustomNode({ data, type, id }) {
             position={Position.Left}
             style={dataHandleStyleLeft}
             id="data-target"
+            title="Data Flow In"
           />
         )}
 
@@ -160,6 +165,7 @@ function CustomNode({ data, type, id }) {
             position={Position.Right}
             style={dataHandleStyleRight}
             id="data-source"
+            title="Data Flow Out"
           />
         )}
       </div>

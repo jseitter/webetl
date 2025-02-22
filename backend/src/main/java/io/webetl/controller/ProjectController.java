@@ -3,6 +3,7 @@ package io.webetl.controller;
 import io.webetl.model.Project;
 import io.webetl.model.Sheet;
 import io.webetl.service.ProjectService;
+import lombok.Data;
 import io.webetl.compiler.FlowCompiler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -62,6 +63,14 @@ public class ProjectController {
         return ResponseEntity.ok(updatedSheet);
     }
 
+    @PatchMapping("/{projectId}/sheets/{sheetId}")
+    public ResponseEntity<Sheet> updateSheetName(
+            @PathVariable String projectId,
+            @PathVariable String sheetId,
+            @RequestBody SheetNameUpdateRequest request) {
+        Sheet updatedSheet = projectService.updateSheetName(projectId, sheetId, request.getName());
+        return ResponseEntity.ok(updatedSheet);
+    }
 
     @GetMapping("/{projectId}/sheets/{sheetId}/export")
     public ResponseEntity<Resource> exportJar(
@@ -75,4 +84,9 @@ public class ProjectController {
                 "attachment; filename=\"flow.jar\"")
             .body(new FileSystemResource(jarFile));
     }
+}
+
+@Data
+class SheetNameUpdateRequest {
+    private String name;
 } 

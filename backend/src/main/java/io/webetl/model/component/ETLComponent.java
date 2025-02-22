@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import io.webetl.model.component.parameter.Parameter;
 import java.util.List;
 import java.util.ArrayList;
+import lombok.Data;
 
 @JsonTypeInfo(
     use = JsonTypeInfo.Id.NAME,
@@ -22,13 +23,14 @@ import java.util.ArrayList;
  * It defines the common properties and methods for all components to be used in the UI
  * and to be serialized to JSON.
  */
-public class ETLComponent {
+@Data
+public abstract class ETLComponent {
     private String id;
     private String label;
     private String description;
     private String icon;
     private String backgroundColor;
-    private String type;
+    private boolean supportsControlFlow;
     @JsonProperty("parameters")
     private List<Parameter<?>> parameters = new ArrayList<>();
 
@@ -60,9 +62,6 @@ public class ETLComponent {
 
     public String getBackgroundColor() { return backgroundColor; }
     public void setBackgroundColor(String backgroundColor) { this.backgroundColor = backgroundColor; }
-
-    public String getType() { return type; }
-    public void setType(String type) { this.type = type; }
 
     public List<Parameter<?>> getParameters() { return parameters; }
     public void setParameters(List<Parameter<?>> parameters) { this.parameters = parameters; }

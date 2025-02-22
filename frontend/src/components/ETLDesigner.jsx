@@ -179,13 +179,28 @@ function ETLDesigner() {
 
   const handleSheetNameSave = async () => {
     try {
-      await axios.patch(`/api/sheets/${currentSheet.id}`, { name: sheetName });
-      setEditingSheetName(false);
+      await axios.patch(`/api/projects/${projectId}/sheets/${currentSheet.id}`, { 
+        name: sheetName 
+      });
+      
+      // Update the sheets array with the new name
       setSheets(sheets.map(s => 
         s.id === currentSheet.id ? { ...s, name: sheetName } : s
       ));
+      
+      // Update the current sheet with the new name
+      setCurrentSheet(prev => ({ ...prev, name: sheetName }));
+      
+      // Close the editing mode
+      setEditingSheetName(false);
     } catch (error) {
       console.error('Error updating sheet name:', error);
+      // Show error in snackbar
+      setSnackbar({
+        open: true,
+        message: 'Failed to update sheet name',
+        severity: 'error'
+      });
     }
   };
 

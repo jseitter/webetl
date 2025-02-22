@@ -2,6 +2,8 @@ package io.webetl.service;
 
 import io.webetl.annotation.ETLComponentDefinition;
 import io.webetl.model.component.ETLComponent;
+import io.webetl.model.component.SourceComponent;
+
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.core.type.filter.AnnotationTypeFilter;
@@ -48,6 +50,14 @@ public class ComponentScanner {
                 component.setDescription(def.description());
                 component.setIcon(def.icon());
                 component.setBackgroundColor(def.backgroundColor());
+                
+                // Control flow only for start/stop nodes and source components
+                if (component instanceof SourceComponent || 
+                    "start".equals(def.id()) || 
+                    "stop".equals(def.id())) {
+                    component.setSupportsControlFlow(true);
+                }
+                
                 components.add(component);
             } catch (Exception e) {
                 throw new RuntimeException("Failed to instantiate component", e);

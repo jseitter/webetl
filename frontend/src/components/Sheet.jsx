@@ -46,6 +46,7 @@ function Sheet({ sheet, onUpdate }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState(sheet.edges);
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionMetrics, setExecutionMetrics] = useState(null);
+  const [isSaved, setIsSaved] = useState(false);
 
   // Notify parent component of changes
   useEffect(() => {
@@ -223,6 +224,22 @@ function Sheet({ sheet, onUpdate }) {
     return Object.values(metrics.nodeMetrics).every(
       node => node.status === 'completed' || node.status === 'error'
     );
+  };
+
+  const handleSave = async () => {
+    try {
+      const sheetData = {
+        id: sheet.id,
+        nodes: nodes,
+        edges: edges
+      };
+      
+      await axios.post('/api/sheets/save', sheetData);
+      setIsSaved(true);
+      console.log('Sheet saved successfully');
+    } catch (error) {
+      console.error('Error saving sheet:', error);
+    }
   };
 
   return (

@@ -146,4 +146,10 @@ public class ProjectService {
             throw new RuntimeException("Error reading sheet", e);
         }
     }
+
+    public Sheet updateSheetName(String projectId, String sheetId, String newName) {
+        Sheet sheet = getProjectSheet(projectId, sheetId);
+        sheet.setName(newName);
+        return updateSheet(projectId, sheetId, sheet);
+    }
 } 
