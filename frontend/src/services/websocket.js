@@ -1,13 +1,21 @@
 import SockJS from 'sockjs-client';
-import { Stomp } from '@stomp/stompjs';
+import { Client } from '@stomp/stompjs';
 
 class WebSocketService {
     connect() {
-        const socket = new SockJS('http://localhost:8085/websocket');
-        this.stompClient = Stomp.over(socket);
-        this.stompClient.debug = () => {}; // Disable debug logging
         return new Promise((resolve, reject) => {
-            this.stompClient.connect({}, () => resolve(), reject);
+            this.stompClient = new Client({
+                webSocketFactory: () => new SockJS('http://localhost:8085/websocket'),
+                debug: () => {},
+                reconnectDelay: 5000,
+                heartbeatIncoming: 4000,
+                heartbeatOutgoing: 4000
+            });
+
+            this.stompClient.onConnect = () => resolve();
+            this.stompClient.onStompError = (frame) => reject(frame);
+            
+            this.stompClient.activate();
         });
     }
 
@@ -20,7 +28,7 @@ class WebSocketService {
 
     disconnect() {
         if (this.stompClient) {
-            this.stompClient.disconnect();
+            this.stompClient.deactivate();
         }
     }
 }
