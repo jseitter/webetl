@@ -55,12 +55,11 @@ function CompileDialog({ open, onClose, sheetId, projectId }) {
                         p: 2,
                         fontFamily: 'monospace',
                         height: 400,
-                        overflow: 'auto'
+                        overflow: 'auto',
+                        whiteSpace: 'pre-wrap'
                     }}
                 >
-                    {output.map((line, i) => (
-                        <Typography key={i} variant="body2">{line}</Typography>
-                    ))}
+                    {output.join('\n')}
                 </Box>
             </DialogContent>
             <DialogActions>

@@ -73,7 +73,8 @@ function Palette({ isExecuting, onExecute, onStop }) {
       backgroundColor: component.backgroundColor,
       parameters: component.parameters || [],
       supportsControlFlow: component.supportsControlFlow,
-      description: component.description
+      description: component.description,
+      implementationClass: component.implementationClass
     };
     
     console.log('Dragging component:', dragData);

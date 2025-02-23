@@ -28,7 +28,7 @@ public class FlowCompilerCLI {
                         printUsage();
                         System.exit(1);
                     }
-                    compileSheet(args[1], args[2], args.length > 3 && "--verbose".equals(args[3]));
+                    compileSheetCLI(args[1], args[2], args.length > 3 && "--verbose".equals(args[3]));
                     break;
                 default:
                     System.err.println("Unknown command: " + command);
@@ -86,19 +86,32 @@ public class FlowCompilerCLI {
         });
     }
     
-    private static void compileSheet(String inputFile, String outputFile, boolean verbose) throws Exception {
+    private static void compileSheetCLI(String inputFile, String outputFile, boolean verbose) {
+        try {
+            compileSheet(inputFile, outputFile, verbose);
+        } catch (Exception e) {
+            System.err.println("Compilation failed: " + e.getMessage());
+            System.exit(1);
+        }
+    }
+
+    public static void compileSheet(String inputFile, String outputFile, boolean verbose) throws CompilationException {
         // Read and parse sheet
-        ObjectMapper mapper = new ObjectMapper();
-        Sheet sheet = mapper.readValue(new File(inputFile), Sheet.class);
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            Sheet sheet = mapper.readValue(new File(inputFile), Sheet.class);
 
-        // Compile
-        FlowCompiler compiler = new FlowCompiler();
-        File jarFile = compiler.compileToJar(sheet, verbose);
+            // Compile
+            FlowCompiler compiler = new FlowCompiler();
+            File jarFile = compiler.compileToJar(sheet, verbose);
 
-        // Copy to output location
-        Files.copy(jarFile.toPath(), new File(outputFile).toPath(), 
-                  java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            // Copy to output location
+            Files.copy(jarFile.toPath(), new File(outputFile).toPath(), 
+                      java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 
-        System.out.println("Successfully compiled to: " + outputFile);
+            System.out.println("Successfully compiled to: " + outputFile);
+        } catch (Exception e) {
+            throw new CompilationException("Failed to compile sheet: " + e.getMessage(), e);
+        }
     }
 } 

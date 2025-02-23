@@ -13,7 +13,7 @@ import io.webetl.model.data.Row;
  * It can also just passthrough the data and e.g log it.
  * It has Input and Output ports to connect to other components.
  */
-public abstract class TransformComponent extends ETLComponent implements InputQueueProvider, OutputQueueProvider, ExecutableComponent {
+public abstract class TransformComponent extends ETLComponent implements InputQueueProvider, OutputQueueProvider {
     private String transformationType;
     private String[] inputTypes;
     private String[] outputTypes;

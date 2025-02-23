@@ -1,5 +1,6 @@
 package io.webetl.controller;
 
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import io.webetl.service.CompilerService;
 
@@ -13,10 +14,16 @@ public class CompilerController {
     }
 
     @PostMapping("/sheets/{sheetId}/compile")
-    public void compileSheet(
+    public ResponseEntity<?> compileSheet(
         @PathVariable String sheetId,
         @RequestParam String projectId
     ) {
-        compilerService.compileSheet(projectId, sheetId);
+        try {
+            compilerService.compileSheet(projectId, sheetId);
+            return ResponseEntity.accepted().build();
+        } catch (Throwable e) {
+            e.printStackTrace();
+            return ResponseEntity.ok().build(); // Still return OK as errors are sent via WebSocket
+        }
     }
 } 

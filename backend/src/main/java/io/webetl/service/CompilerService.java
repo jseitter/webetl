@@ -6,6 +6,8 @@ import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.io.PrintStream;
 import java.io.ByteArrayOutputStream;
+
+import io.webetl.compiler.CompilationException;
 import io.webetl.compiler.FlowCompilerCLI;
 
 @Service
@@ -36,17 +38,15 @@ public class CompilerService {
 
                 try {
                     // Call compiler directly
-                    String[] args = new String[] {
-                        "compile",
+                    FlowCompilerCLI.compileSheet(
                         projectDir.resolve("sheets").resolve(sheetId + ".json").toString(),
-                        compiledDir.resolve(sheetId + ".jar").toString()
-                    };
-                    
-                    FlowCompilerCLI.main(args);
+                        compiledDir.resolve(sheetId + ".jar").toString(),
+                       true 
+                    );
                     
                     // Send captured output
                     String output = baos.toString();
-                    for (String line : output.split("\n")) {
+                    for (String line : output.split("\\R")) {
                         messagingTemplate.convertAndSend("/topic/compiler/" + sheetId, line);
                     }
                     
@@ -54,14 +54,26 @@ public class CompilerService {
                         "/topic/compiler/" + sheetId,
                         "Compilation completed successfully"
                     );
+                } catch (CompilationException | IllegalStateException e) {
+                    messagingTemplate.convertAndSend(
+                        "/topic/compiler/" + sheetId,
+                        "Compilation error: " + e.getMessage()
+                    );
+                } catch (Throwable e) {
+                    messagingTemplate.convertAndSend(
+                        "/topic/compiler/" + sheetId,
+                        "Unexpected error during compilation: " + e.getMessage()
+                    );
+                    e.printStackTrace();
                 } finally {
                     System.setOut(oldOut);
                 }
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 messagingTemplate.convertAndSend(
                     "/topic/compiler/" + sheetId,
                     "Compilation error: " + e.getMessage()
                 );
+                e.printStackTrace();
             }
         });
     }

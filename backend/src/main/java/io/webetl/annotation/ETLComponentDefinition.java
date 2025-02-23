@@ -24,4 +24,5 @@ public @interface ETLComponentDefinition {
     boolean supportsControlFlow() default false;
     String[] inputTypes() default {};
     String[] outputTypes() default {};
+    String implementationClass() default "";  // Will be auto-filled by scanner
 } 

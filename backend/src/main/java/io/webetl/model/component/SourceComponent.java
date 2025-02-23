@@ -9,7 +9,7 @@ import io.webetl.model.data.Row;
  * SourceComponent is a component that reads data from a source.
  * It has only output ports.
  */
-public abstract class SourceComponent extends ETLComponent implements ExecutableComponent, OutputQueueProvider {
+public abstract class SourceComponent extends ETLComponent implements OutputQueueProvider {
     private String sourceType;
     private boolean supportsControlFlow;
     private final List<InputQueueProvider> outputQueues;
