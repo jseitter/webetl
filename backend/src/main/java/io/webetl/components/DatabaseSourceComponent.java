@@ -3,6 +3,7 @@ package io.webetl.components;
 import io.webetl.annotation.ETLComponentDefinition;
 import io.webetl.model.component.SourceComponent;
 import io.webetl.model.component.parameter.StringParameter;
+import io.webetl.model.data.Row;
 import io.webetl.runtime.ExecutionContext;
 import io.webetl.model.component.parameter.SecretParameter;
 import io.webetl.model.component.parameter.SQLParameter;
@@ -45,5 +46,16 @@ public class DatabaseSourceComponent extends SourceComponent {
     @Override
     public void execute(ExecutionContext context) {
         // Implementation for database reading
+        System.out.println("Executing database source component");
+        for(int i=0; i<5; i++) {
+            Row row = new Row();
+            System.out.println("producing Row: " + i);
+            super.sendRow(row);
+        }
+        System.out.println("finished producing rows");
+        // Send terminator after all rows are processed
+        sendRow(Row.createTerminator());
+        context.setTerminator(true);
+        System.out.println("sent terminator");
     }
 } 

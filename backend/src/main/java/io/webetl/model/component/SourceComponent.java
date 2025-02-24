@@ -41,6 +41,7 @@ public abstract class SourceComponent extends ETLComponent implements OutputQueu
     @Override
     public void sendRow(Row row) {
         for (InputQueueProvider queue : outputQueues) {
+            System.out.println("sending Row: " + row );
             queue.putRow(row);
         }
     }

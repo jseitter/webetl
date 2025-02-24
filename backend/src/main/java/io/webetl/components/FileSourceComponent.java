@@ -19,5 +19,6 @@ public class FileSourceComponent extends SourceComponent {
     @Override
     public void execute(ExecutionContext context) {
         // Implementation for reading from file
+        System.out.println("Executing file source component");
     }
 } 

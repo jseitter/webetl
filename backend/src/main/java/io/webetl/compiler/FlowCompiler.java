@@ -1,8 +1,6 @@
 package io.webetl.compiler;
 
 import io.webetl.model.Sheet;
-import io.webetl.model.Node;
-import io.webetl.model.Edge;
 import org.springframework.stereotype.Service;
 import javax.tools.*;
 import java.io.*;
@@ -161,6 +159,19 @@ public class FlowCompiler {
                 jos.write(Files.readAllBytes(tempDir.resolve("CompiledFlow.class")));
                 jos.closeEntry();
                 
+                // Add runtime classes
+                Path runtimeJar = findRuntimeJar();
+                try (JarInputStream jis = new JarInputStream(new FileInputStream(runtimeJar.toFile()))) {
+                    JarEntry entry;
+                    while ((entry = jis.getNextJarEntry()) != null) {
+                        if (!entry.isDirectory()) {
+                            jos.putNextEntry(new JarEntry(entry.getName()));
+                            jos.write(jis.readAllBytes());
+                            jos.closeEntry();
+                        }
+                    }
+                }
+                
                 // Add manifest
                 Manifest manifest = new Manifest();
                 manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
@@ -182,17 +193,16 @@ public class FlowCompiler {
     
     private String generateSourceCode(String className, Sheet sheet, boolean verbose) {
         StringBuilder code = new StringBuilder();
-        // Add required imports at class level
-        code.append("import java.util.Map;\n");
-        code.append("import java.util.List;\n");
-        code.append("import java.util.ArrayList;\n");
+        
+        // Add common imports at class level
+        code.append("import java.util.*;\n");
         code.append("import java.util.concurrent.BlockingQueue;\n");
         code.append("import java.util.concurrent.LinkedBlockingQueue;\n");
-        code.append("import io.webetl.model.data.*;\n");
-        code.append("import io.webetl.model.component.ExecutableComponent;\n");
+        code.append("import io.webetl.model.data.Row;\n");
+        code.append("import io.webetl.model.component.*;\n");
         code.append("import io.webetl.runtime.ExecutionContext;\n");
-
-        // Import specific component classes
+        
+        // Add component-specific imports
         Set<String> componentClasses = new HashSet<>();
         for (Map<String, Object> node : sheet.getNodes()) {
             Map<String, Object> data = (Map<String, Object>) node.get("data");
@@ -207,101 +217,165 @@ public class FlowCompiler {
         }
         code.append("\n");
         
-        code.append("public class ").append(className)
-            .append(" extends CompiledFlow {\n");
+        // Generate class
+        code.append("public class ").append(className).append(" extends CompiledFlow {\n");
+        
+        // Generate execute method
         code.append("    @Override\n");
         code.append("    public void execute(ExecutionContext context) throws Exception {\n");
-        
-        // Generate execution code based on sheet nodes and edges
         generateExecutionCode(code, sheet, verbose);
-        
         code.append("    }\n");
-        code.append("    \n");
-        code.append("    public static void main(String[] args) {\n");
+        
+        // Generate main method
+        code.append("\n    public static void main(String[] args) {\n");
         code.append("        try {\n");
         code.append("            new ").append(className).append("().execute(new ExecutionContext());\n");
         code.append("        } catch (Exception e) {\n");
         code.append("            e.printStackTrace();\n");
         code.append("        }\n");
         code.append("    }\n");
-        code.append("}\n");
         
+        code.append("}\n");
         return code.toString();
     }
     
     private void generateExecutionCode(StringBuilder code, Sheet sheet, boolean verbose) {
         try {
-            // Sort nodes in execution order
-            List<Map<String, Object>> sortedNodes = sortNodesInExecutionOrder(sheet, verbose);
+            code.append("        log(\"Starting flow execution\");\n\n");
             
-            // Validate component implementation classes
-            for (Map<String, Object> node : sortedNodes) {
-                Map<String, Object> data = (Map<String, Object>) node.get("data");
-                Map<String, Object> componentData = (Map<String, Object>) data.get("componentData");
-                String nodeId = (String) node.get("id");
-                String implementationClass = (String) componentData.get("implementationClass");
-                
-                if (implementationClass == null && !"start".equals(componentData.get("id")) && !"stop".equals(componentData.get("id"))) {
-                    throw new CompilationException("No implementation class found for component: " + nodeId + 
-                        " (type: " + componentData.get("id") + ")");
-                }
+            // Sort nodes in control flow order
+            List<Map<String, Object>> controlFlowNodes = sortNodesInExecutionOrder(sheet, verbose);
+            
+            // Initialize components
+            code.append("        log(\"Initializing components\");\n");
+            code.append("        Map<String, ExecutableComponent> components = new HashMap<>();\n");
+            code.append("        List<Thread> threads = new ArrayList<>();\n\n");
+            
+            // Initialize all components first
+            for (Map<String, Object> node : sheet.getNodes()) {
+                initializeComponent(code, node);
             }
             
-            // Generate component and queue initialization
-            code.append("        java.util.Map<String, java.util.concurrent.BlockingQueue<Row>> queues = new java.util.HashMap<>();\n");
-            code.append("        java.util.Map<String, ExecutableComponent> components = new java.util.HashMap<>();\n");
-            code.append("        java.util.List<Thread> threads = new java.util.ArrayList<>();\n\n");
+            // Add debug thread generation
+            code.append("\n        // Create debug monitoring thread\n");
+            code.append("        Thread debugThread = new Thread(() -> {\n");
+            code.append("            while (!Thread.currentThread().isInterrupted()) {\n");
+            code.append("                try {\n");
+            code.append("                    log(\"\\n=== Thread Status Report ===\");\n");
+            code.append("                    for (Thread t : threads) {\n");
+            code.append("                        log(String.format(\"Thread %s: %s\", t.getName(), t.getState()));\n");
+            code.append("                    }\n");
+            code.append("                    log(\"===========================\\n\");\n");
+            code.append("                    Thread.sleep(5000); // Report every 5 seconds\n");
+            code.append("                } catch (InterruptedException e) {\n");
+            code.append("                    Thread.currentThread().interrupt();\n");
+            code.append("                    break;\n");
+            code.append("                }\n");
+            code.append("            }\n");
+            code.append("        }, \"debug-monitor\");\n");
+            code.append("        debugThread.setDaemon(true);\n");
+            code.append("        debugThread.start();\n\n");
             
-            for (Map<String, Object> node : sortedNodes) {
-                String nodeId = (String) node.get("id");
-                Map<String, Object> data = (Map<String, Object>) node.get("data");
-                Map<String, Object> componentData = (Map<String, Object>) data.get("componentData");
-                String implementationClass = (String) componentData.get("implementationClass");
-                String type = (String) componentData.get("type");
+            // For each control flow node, process its data flow chain
+            for (Map<String, Object> controlNode : controlFlowNodes) {
+                // Create threads for current data flow chain
+                code.append("\n        // Process data flow chain starting from control node: " + controlNode.get("id") + "\n");
+                List<Map<String, Object>> dataFlowChain = getDataFlowChain(controlNode, sheet.getEdges(), sheet.getNodes());
                 
-                code.append("        log(\"Executing node: ").append(nodeId).append("\");\n");
+                // Connect components in this chain
+                connectDataFlowComponents(code, dataFlowChain, sheet.getEdges());
                 
-                // Skip start and stop nodes for data flow
-                if ("start".equals(componentData.get("id")) || "stop".equals(componentData.get("id"))) {
-                    continue;
+                // Create threads for all components in this chain
+                for (Map<String, Object> node : dataFlowChain) {
+                    generateThreadForComponent(code, node);
                 }
                 
-                // Instantiate component
-                code.append("        components.put(\"").append(nodeId).append("\", new ")
-                    .append(implementationClass).append("());\n");
+                // Start all threads for this chain
+                code.append("\n        log(\"Starting threads for data flow chain\");\n");
+                code.append("        for (Thread thread : threads) {\n");
+                code.append("            thread.start();\n");
+                code.append("        }\n\n");
                 
-                // Configure component parameters
-                if (componentData.containsKey("parameters")) {
-                    List<Map<String, Object>> parameters = (List<Map<String, Object>>) componentData.get("parameters");
-                    for (Map<String, Object> param : parameters) {
-                        code.append("        ((").append(implementationClass).append(")components.get(\"")
-                            .append(nodeId).append("\")).setParameter(\"")
-                            .append(param.get("name")).append("\", ")
-                            .append(formatParameterValue(param)).append(");\n");
-                    }
-                }
+                // Wait for all threads in this chain
+                code.append("        log(\"Waiting for data flow chain to complete\");\n");
+                code.append("        for (Thread thread : threads) {\n");
+                code.append("            thread.join();\n");
+                code.append("        }\n");
+                code.append("        threads.clear();\n");  // Clear for next chain
             }
             
-            // Create execution threads
-            code.append("\n        // Create execution threads\n");
-            for (Map<String, Object> node : sortedNodes) {
-                String nodeId = (String) node.get("id");
-                code.append("        threads.add(new Thread(() -> {\n");
-                code.append("            try {\n");
-                code.append("                components.get(\"")
-                    .append(nodeId).append("\").execute(context);\n");
-                code.append("            } catch (Exception e) {\n");
-                code.append("                throw new RuntimeException(e);\n");
-                code.append("            }\n");
-                code.append("        }));\n");
-            }
+            code.append("        log(\"Flow execution completed\");\n");
             
-            // Start all threads
-            code.append("        threads.forEach(Thread::start);\n");
-            code.append("        threads.forEach(t -> { try { t.join(); } catch (InterruptedException e) { throw new RuntimeException(e); } });\n");
         } catch (Throwable e) {
             throw new CompilationException("Failed to generate execution code: " + e.getMessage(), e);
         }
+    }
+    
+    private void generateThreadForComponent(StringBuilder code, Map<String, Object> node) {
+        Map<String, Object> data = (Map<String, Object>) node.get("data");
+        Map<String, Object> componentData = (Map<String, Object>) data.get("componentData");
+        String nodeId = (String) node.get("id");
+        
+        if (!"start".equals(componentData.get("id")) && !"stop".equals(componentData.get("id"))) {
+            // Create multiple threads for components that support it
+            int threadCount = getThreadCount(componentData);
+            code.append("        log(\"Creating ").append(threadCount).append(" thread(s) for component: ")
+                .append(nodeId).append("\");\n");
+                
+            for (int i = 0; i < threadCount; i++) {
+                code.append("        threads.add(new Thread(() -> {\n");
+                code.append("            try {\n");
+                code.append("                if (components.get(\"").append(nodeId)
+                    .append("\") instanceof io.webetl.model.component.InputQueueProvider) {\n");
+                // Input queue consumer logic
+                code.append("                    while (true) {\n");
+                code.append("                        Row row = ((io.webetl.model.component.InputQueueProvider)components.get(\"")
+                    .append(nodeId).append("\")).getInputQueue().peek();\n");  // BlockingQueue.take()
+                code.append("                        if (row.isTerminator()) {\n");
+                code.append("                            log(\"" + nodeId + " received terminator\");\n");
+                code.append("                            if (components.get(\"").append(nodeId)
+                    .append("\") instanceof io.webetl.model.component.OutputQueueProvider) {\n");
+                code.append("                                ((io.webetl.model.component.OutputQueueProvider)components.get(\"")
+                    .append(nodeId).append("\")).sendRow(row);\n");
+                code.append("                            }\n");
+                code.append("                            break;\n");
+                code.append("                        }\n");
+                code.append("                        components.get(\"").append(nodeId).append("\").execute(context);\n");
+                code.append("                        if (components.get(\"").append(nodeId)
+                    .append("\") instanceof io.webetl.model.component.OutputQueueProvider) {\n");
+                code.append("                            ((io.webetl.model.component.OutputQueueProvider)components.get(\"")
+                    .append(nodeId).append("\")).sendRow(row);\n");
+                code.append("                        }\n");
+                code.append("                    }\n");
+                // Source component logic
+                code.append("                } else {\n");
+                code.append("                    components.get(\"").append(nodeId).append("\").execute(context);\n");
+                code.append("                    if (components.get(\"").append(nodeId)
+                    .append("\") instanceof io.webetl.model.component.OutputQueueProvider) {\n");
+                code.append("                        ((io.webetl.model.component.OutputQueueProvider)components.get(\"")
+                    .append(nodeId).append("\")).sendRow(Row.createTerminator());\n");
+                code.append("                    }\n");
+                code.append("                }\n");
+                code.append("            } catch (Exception e) {\n");
+                code.append("                e.printStackTrace();\n");
+                code.append("            }\n");
+                code.append("        }, \"").append(nodeId).append("-thread-").append(i + 1).append("\"));\n");
+            }
+        }
+    }
+   
+    /**
+     * Get the number of threads for a component.
+     * @param componentData the component data
+     * @return the amount of threads to create
+     */
+    private int getThreadCount(Map<String, Object> componentData) {
+        // Default to 1 thread
+        Integer threads = (Integer) componentData.get("threads");
+        if (threads == null || threads < 1) {
+            return 1;
+        }
+        return threads;
     }
     
     private String formatParameterValue(Map<String, Object> param) {
@@ -377,73 +451,28 @@ public class FlowCompiler {
             .orElse(null);
     }
     
-    private void generateSourceCode(StringBuilder code, String nodeId, Map<String, Object> componentData) {
-        code.append("        // Create output queue for source node\n");
-        code.append("        queues.put(\"").append(nodeId).append("_out\", new java.util.concurrent.LinkedBlockingQueue<>());\n");
-        code.append("        threads.add(new Thread(() -> {\n");
-        code.append("            try {\n");
+    private void initializeComponent(StringBuilder code, Map<String, Object> node) {
+        Map<String, Object> data = (Map<String, Object>) node.get("data");
+        Map<String, Object> componentData = (Map<String, Object>) data.get("componentData");
+        String nodeId = (String) node.get("id");
+        String implementationClass = (String) componentData.get("implementationClass");
         
-        // Generate source-specific code based on component type
-        String sourceType = (String) componentData.get("id");
-        switch (sourceType) {
-            case "db-source":
-                generateDatabaseSourceCode(code, nodeId, componentData);
-                break;
-            case "file-source":
-                generateFileSourceCode(code, nodeId, componentData);
-                break;
+        if (!"start".equals(componentData.get("id")) && !"stop".equals(componentData.get("id"))) {
+            code.append("        log(\"Initializing component: ").append(nodeId).append("\");\n");
+            code.append("        components.put(\"").append(nodeId)
+                .append("\", new ").append(implementationClass).append("());\n");
+            
+            // Set parameters if any
+            List<Map<String, Object>> parameters = (List<Map<String, Object>>) componentData.get("parameters");
+            if (parameters != null) {
+                for (Map<String, Object> param : parameters) {
+                    code.append("        ((").append(implementationClass).append(")components.get(\"")
+                        .append(nodeId).append("\")).setParameter(\"")
+                        .append(param.get("name")).append("\", ")
+                        .append(formatParameterValue(param)).append(");\n");
+                }
+            }
         }
-        
-        code.append("            } catch (Exception e) {\n");
-        code.append("                throw new RuntimeException(e);\n");
-        code.append("            }\n");
-        code.append("        }));\n\n");
-    }
-    
-    private void generateTransformCode(StringBuilder code, String nodeId, Map<String, Object> componentData) {
-        code.append("        // Create output queue for transform node\n");
-        code.append("        queues.put(\"").append(nodeId).append("_out\", new java.util.concurrent.LinkedBlockingQueue<>());\n");
-        code.append("        threads.add(new Thread(() -> {\n");
-        code.append("            try {\n");
-        code.append("                var inputQueue = queues.get(\"" + getInputQueueId(nodeId) + "\");\n");
-        
-        // Generate transform-specific code based on component type
-        String transformType = (String) componentData.get("id");
-        switch (transformType) {
-            case "filter":
-                generateFilterCode(code, nodeId, componentData);
-                break;
-            case "map":
-                generateMapCode(code, nodeId, componentData);
-                break;
-        }
-        
-        code.append("            } catch (Exception e) {\n");
-        code.append("                throw new RuntimeException(e);\n");
-        code.append("            }\n");
-        code.append("        }));\n\n");
-    }
-    
-    private void generateDestinationCode(StringBuilder code, String nodeId, Map<String, Object> componentData) {
-        code.append("        threads.add(new Thread(() -> {\n");
-        code.append("            try {\n");
-        code.append("                var inputQueue = queues.get(\"" + getInputQueueId(nodeId) + "\");\n");
-        
-        // Generate destination-specific code based on component type
-        String destType = (String) componentData.get("id");
-        switch (destType) {
-            case "db-dest":
-                generateDatabaseDestinationCode(code, nodeId, componentData);
-                break;
-            case "file-dest":
-                generateFileDestinationCode(code, nodeId, componentData);
-                break;
-        }
-        
-        code.append("            } catch (Exception e) {\n");
-        code.append("                throw new RuntimeException(e);\n");
-        code.append("            }\n");
-        code.append("        }));\n\n");
     }
     
     private String getInputQueueId(String nodeId) {
@@ -451,32 +480,107 @@ public class FlowCompiler {
         System.out.println("Getting input queue id for node: " + nodeId);
         return nodeId + "_in";
     }
-    
-    private void generateDatabaseSourceCode(StringBuilder code, String nodeId, Map<String, Object> componentData) {
-        code.append("                // TODO: Implement database source\n");
-        code.append("                var outputQueue = queues.get(\"" + nodeId + "_out\");\n");
+
+    private Path findRuntimeJar() throws IOException {
+        // First try release structure (runtime.jar next to application jar)
+        Path applicationPath = new File(FlowCompiler.class.getProtectionDomain()
+            .getCodeSource().getLocation().getPath()).toPath();
+        Path releasePath = applicationPath.getParent().resolve("runtime.jar");
+        
+        System.out.println("Searching for runtime.jar in release path: " + releasePath);
+        if (Files.exists(releasePath)) {
+            System.out.println("Found runtime.jar in release path");
+            return releasePath;
+        }
+
+        // Try development structure (build/libs/runtime.jar)
+        Path projectRoot = Paths.get("").toAbsolutePath();
+        System.out.println("Starting search from: " + projectRoot);
+        
+        while (projectRoot != null && !Files.exists(projectRoot.resolve("gradlew"))) {
+            projectRoot = projectRoot.getParent();
+            System.out.println("Looking for gradlew in: " + projectRoot);
+        }
+        
+        if (projectRoot != null) {
+            Path devPath = projectRoot.resolve("backend/build/libs/webetl-runtime.jar");
+            System.out.println("Searching for runtime.jar in dev path: " + devPath);
+            if (Files.exists(devPath)) {
+                System.out.println("Found runtime.jar in dev path");
+                return devPath;
+            }
+        }
+
+        throw new IOException("Could not find runtime.jar in either:\n" +
+            "Release path: " + releasePath + "\n" +
+            "Dev path: " + (projectRoot != null ? projectRoot.resolve("backend/build/libs/webetl-runtime.jar") : "project root not found"));
     }
-    
-    private void generateFileSourceCode(StringBuilder code, String nodeId, Map<String, Object> componentData) {
-        code.append("                // TODO: Implement file source\n");
-        code.append("                var outputQueue = queues.get(\"" + nodeId + "_out\");\n");
+
+    private List<Map<String, Object>> getDataFlowChain(Map<String, Object> startNode, 
+            List<Map<String, Object>> edges, List<Map<String, Object>> allNodes) {
+        List<Map<String, Object>> chain = new ArrayList<>();
+        chain.add(startNode);
+        
+        String currentId = (String)startNode.get("id");
+        while (currentId != null) {
+            String nextId = findNextDataFlowNode(currentId, edges);
+            if (nextId != null) {
+                Map<String, Object> nextNode = allNodes.stream()
+                    .filter(n -> nextId.equals(n.get("id")))
+                    .findFirst()
+                    .orElse(null);
+                if (nextNode != null) {
+                    chain.add(nextNode);
+                    currentId = nextId;
+                } else {
+                    currentId = null;
+                }
+            } else {
+                currentId = null;
+            }
+        }
+        return chain;
     }
-    
-    private void generateFilterCode(StringBuilder code, String nodeId, Map<String, Object> componentData) {
-        code.append("                // TODO: Implement filter\n");
-        code.append("                var outputQueue = queues.get(\"" + nodeId + "_out\");\n");
+
+    private String findNextDataFlowNode(String sourceId, List<Map<String, Object>> edges) {
+        return edges.stream()
+            .filter(edge -> sourceId.equals(edge.get("source")) && 
+                   !((String)edge.get("sourceHandle")).startsWith("control-flow"))
+            .map(edge -> (String)edge.get("target"))
+            .findFirst()
+            .orElse(null);
     }
-    
-    private void generateMapCode(StringBuilder code, String nodeId, Map<String, Object> componentData) {
-        code.append("                // TODO: Implement map\n");
-        code.append("                var outputQueue = queues.get(\"" + nodeId + "_out\");\n");
+
+    private List<Map<String, Object>> getDataFlowEdges(List<Map<String, Object>> nodes, 
+            List<Map<String, Object>> allEdges) {
+        Set<String> nodeIds = nodes.stream()
+            .map(n -> (String)n.get("id"))
+            .collect(Collectors.toSet());
+            
+        return allEdges.stream()
+            .filter(edge -> nodeIds.contains(edge.get("source")) && 
+                   nodeIds.contains(edge.get("target")) &&
+                   !((String)edge.get("sourceHandle")).startsWith("control-flow"))
+            .collect(Collectors.toList());
     }
-    
-    private void generateDatabaseDestinationCode(StringBuilder code, String nodeId, Map<String, Object> componentData) {
-        code.append("                // TODO: Implement database destination\n");
-    }
-    
-    private void generateFileDestinationCode(StringBuilder code, String nodeId, Map<String, Object> componentData) {
-        code.append("                // TODO: Implement file destination\n");
+
+    private void connectDataFlowComponents(StringBuilder code, List<Map<String, Object>> dataFlowChain, List<Map<String, Object>> edges) {
+        for (int i = 0; i < dataFlowChain.size() - 1; i++) {
+            Map<String, Object> sourceNode = dataFlowChain.get(i);
+            Map<String, Object> targetNode = dataFlowChain.get(i + 1);
+            String sourceId = (String) sourceNode.get("id");
+            String targetId = (String) targetNode.get("id");
+            
+            code.append("        // Connect ").append(sourceId).append(" to ").append(targetId).append("\n");
+            code.append("        if (components.get(\"").append(sourceId)
+                .append("\") instanceof io.webetl.model.component.OutputQueueProvider && ")
+                .append("components.get(\"").append(targetId)
+                .append("\") instanceof io.webetl.model.component.InputQueueProvider) {\n")
+                .append("            ((io.webetl.model.component.OutputQueueProvider)components.get(\"")
+                .append(sourceId).append("\")).registerInputQueue(")
+                .append("((io.webetl.model.component.InputQueueProvider)components.get(\"")
+                .append(targetId).append("\"))")
+                .append(");\n        }\n");
+        }
     }
 } 

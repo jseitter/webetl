@@ -11,6 +11,7 @@ public class Row {
     private Map<String, Object> values;  // column name -> value
     private RowMetadata metadata;        // optional: timestamp, source info, etc.
     private Schema schema;               // defines the structure of this row
+    private boolean isTerminator = false;
 
     public Row() {
         this.values = new HashMap<>();
@@ -36,5 +37,15 @@ public class Row {
 
     public Map<String, Object> getValues() {
         return Collections.unmodifiableMap(values);
+    }
+
+    public static Row createTerminator() {
+        Row row = new Row();
+        row.isTerminator = true;
+        return row;
+    }
+    
+    public boolean isTerminator() {
+        return isTerminator;
     }
 } 

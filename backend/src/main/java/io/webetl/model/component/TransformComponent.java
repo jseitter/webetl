@@ -17,7 +17,13 @@ public abstract class TransformComponent extends ETLComponent implements InputQu
     private String transformationType;
     private String[] inputTypes;
     private String[] outputTypes;
+    /**
+     * The input queue for the component.
+     */
     private final BlockingQueue<Row> inputQueue;
+    /**
+     * The output queues for the component.
+     */
     private final List<InputQueueProvider> outputQueues;
 
     public TransformComponent() {
@@ -45,9 +51,13 @@ public abstract class TransformComponent extends ETLComponent implements InputQu
     public String[] getOutputTypes() { return outputTypes; }
     public void setOutputTypes(String[] outputTypes) { this.outputTypes = outputTypes; }
 
+    /** 
+     * from InputQueueProvider
+     */
     @Override
     public void putRow(Row row) {
         try {
+            System.out.println("putting Row: " + row + " into " + this.getId());
             inputQueue.put(row);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -55,15 +65,35 @@ public abstract class TransformComponent extends ETLComponent implements InputQu
         }
     }
 
+    /**
+     * Take a row from the input queue.
+     * @return the row
+     * @throws InterruptedException if the thread is interrupted
+         */
     protected Row takeInputRow() throws InterruptedException {
         return inputQueue.take();
     }
 
+    /**
+     * from InputQueueProvider
+     * Get the input queue.
+     * @return the input queue
+     */
+    public BlockingQueue<Row> getInputQueue() {
+        return inputQueue;
+    }
+
+    /**
+     * from OutputQueueProvider
+     */
     @Override
     public void registerInputQueue(InputQueueProvider provider) {
         outputQueues.add(provider);
     }
 
+    /**
+     * from OutputQueueProvider
+     */
     @Override
     public void sendRow(Row row) {
         for (InputQueueProvider queue : outputQueues) {

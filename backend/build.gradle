@@ -19,6 +19,7 @@ tasks.jar {
 // Define a separate configuration for compiler-only dependencies
 configurations {
     compilerOnly
+    webetlRuntimeOnly
 }
 
 dependencies {
@@ -36,6 +37,11 @@ dependencies {
     compilerOnly 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
     compilerOnly 'org.slf4j:slf4j-api:2.0.7'
     compilerOnly 'org.slf4j:slf4j-simple:2.0.7'
+
+    webetlRuntimeOnly 'org.postgresql:postgresql:42.7.4'
+    webetlRuntimeOnly 'mysql:mysql-connector-java:8.0.33'
+    webetlRuntimeOnly 'com.h2database:h2:2.3.232'
+
 }
 
 test {
@@ -45,7 +51,7 @@ test {
 application {
     mainClass = 'io.webetl.Application'
 }
-
+// create a jar file for the flow compiler
 task compilerJar(type: Jar) {
     archiveBaseName = 'flow-compiler'
     archiveClassifier = ''
@@ -64,10 +70,33 @@ task compilerJar(type: Jar) {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
+// create a jar file for the runtime
+task runtimeJar(type: Jar) {
+    archiveBaseName = 'webetl-runtime'
+    archiveVersion = ''
+    archiveClassifier = ''
+    
+    from sourceSets.main.output
+    include 'io/webetl/components/**'
+    include 'io/webetl/runtime/**'
+    include 'io/webetl/model/component/**'
+    include 'io/webetl/model/data/**'
+    
+    
+    dependsOn configurations.webetlRuntimeOnly
+    from {
+        configurations.webetlRuntimeOnly.collect { zipTree(it) }
+    }
+    
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+// create a jar file for the backend
 bootJar {
     archiveFileName = 'backend.jar'
 }
 
+// create a distribution for the backend
 distributions {
     boot {
         distributionBaseName = 'webetl'
@@ -76,6 +105,10 @@ distributions {
             from(compilerJar) {
                 into "lib"
                 rename { "compiler.jar" }
+            }
+            from(runtimeJar) {
+                into "lib"
+                rename { "runtime.jar" }
             }
             from('src/dist/bin') {
                 into "bin"
@@ -194,4 +227,4 @@ bootJar {
 }
 
 // Make sure bootJar runs after frontend:build
-bootJar.mustRunAfter(':frontend:build') 
+bootJar.mustRunAfter(':frontend:build')

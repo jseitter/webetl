@@ -3,6 +3,7 @@ package io.webetl.components;
 import io.webetl.annotation.ETLComponentDefinition;
 import io.webetl.model.component.TransformComponent;
 import io.webetl.model.component.parameter.SQLParameter;
+import io.webetl.model.data.Row;
 import io.webetl.runtime.ExecutionContext;
 
 @ETLComponentDefinition(
@@ -26,6 +27,15 @@ public class MapTransformComponent extends TransformComponent {
     @Override
     public void execute(ExecutionContext context) {
         // Implementation for mapping transformation
-        // Will be implemented in a future PR
+        System.out.println("Executing map transform component");
+        Row row;
+        try {
+            System.out.println("waiting for Row");
+            row = super.takeInputRow();
+            System.out.println("passing Row: " + row + " to next component");
+            sendRow(row);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 } 

@@ -1,5 +1,7 @@
 package io.webetl.model.component;
 
+import java.util.Queue;
+
 import io.webetl.model.data.Row;
 
 /**
@@ -7,6 +9,12 @@ import io.webetl.model.data.Row;
  * It is used to connect components that provide data to components that consume data.
  */
 public interface InputQueueProvider {
+
+    /**
+     * Get the input queue.
+     * @return the input queue
+     */
+    public Queue<Row> getInputQueue();
 
     /**
      * Queue a row for processing.
