@@ -72,6 +72,18 @@ public class ProjectController {
         return ResponseEntity.ok(updatedSheet);
     }
 
+    @DeleteMapping("/{projectId}/sheets/{sheetId}")
+    public ResponseEntity<?> deleteSheet(
+            @PathVariable String projectId,
+            @PathVariable String sheetId) {
+        try {
+            projectService.moveSheetToTrash(projectId, sheetId);
+            return ResponseEntity.ok().build();
+        } catch (IOException e) {
+            return ResponseEntity.internalServerError().body("Failed to delete sheet");
+        }
+    }
+
     @GetMapping("/{projectId}/sheets/{sheetId}/export")
     public ResponseEntity<Resource> exportJar(
             @PathVariable String projectId,

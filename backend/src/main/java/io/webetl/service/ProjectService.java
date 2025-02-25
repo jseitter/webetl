@@ -152,4 +152,15 @@ public class ProjectService {
         sheet.setName(newName);
         return updateSheet(projectId, sheetId, sheet);
     }
+
+    public void moveSheetToTrash(String projectId, String sheetId) throws IOException {
+        Path sheetsPath = getProjectSheetsPath(projectId);
+        Path trashPath = sheetsPath.resolve("trash");
+        Files.createDirectories(trashPath);
+        
+        Path sourcePath = sheetsPath.resolve(sheetId + ".json");
+        Path targetPath = trashPath.resolve(sheetId + ".json");
+        
+        Files.move(sourcePath, targetPath);
+    }
 } 

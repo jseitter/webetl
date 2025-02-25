@@ -12,6 +12,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import ChatBot from './ChatBot';
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogContentText from '@mui/material/DialogContentText';
+import DialogTitle from '@mui/material/DialogTitle';
+import DeleteIcon from '@mui/icons-material/Delete';
 
 function ETLDesigner() {
   const { projectId } = useParams();
@@ -26,6 +32,7 @@ function ETLDesigner() {
   const [sheetName, setSheetName] = useState('');
   const [compileDialogOpen, setCompileDialogOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, sheetId: null });
 
   // Check backend health periodically
   useEffect(() => {
@@ -253,6 +260,27 @@ function ETLDesigner() {
     }
   };
 
+  const handleDeleteSheet = async () => {
+    try {
+      await axios.delete(`/api/projects/${projectId}/sheets/${deleteDialog.sheetId}`);
+      setSheets(sheets.filter(s => s.id !== deleteDialog.sheetId));
+      setActiveSheet(0);
+      setDeleteDialog({ open: false, sheetId: null });
+      setSnackbar({
+        open: true,
+        message: 'Sheet moved to trash',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error deleting sheet:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to delete sheet',
+        severity: 'error'
+      });
+    }
+  };
+
   return (
     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <AppBar position="static">
@@ -333,7 +361,20 @@ function ETLDesigner() {
           {sheets.map((sheet, index) => (
             <Tab 
               key={sheet.id} 
-              label={`${unsavedChanges.has(sheet.id) ? '* ' : ''}${sheet.name}`}
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <span>{sheet.name}</span>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteDialog({ open: true, sheetId: sheet.id });
+                    }}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              }
             />
           ))}
           <Tab label="+" onClick={handleAddSheet} />
@@ -409,6 +450,21 @@ function ETLDesigner() {
         onFlowSuggestion={handleFlowSuggestion}
         currentSheet={currentSheet}
       />
+      <Dialog
+        open={deleteDialog.open}
+        onClose={() => setDeleteDialog({ open: false, sheetId: null })}
+      >
+        <DialogTitle>Delete Sheet</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete this sheet? It will be moved to the trash.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialog({ open: false, sheetId: null })}>Cancel</Button>
+          <Button onClick={handleDeleteSheet} color="error">Delete</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
