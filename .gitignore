@@ -21,3 +21,6 @@ gradle-app.setting
 .project
 # JDT-specific (Eclipse Java Development Tools)
 .classpath
+
+# Application secrets properties
+backend/src/main/resources/application-secrets.properties

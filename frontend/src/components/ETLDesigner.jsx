@@ -9,6 +9,9 @@ import CompileDialog from './CompileDialog';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import { useParams, useNavigate } from 'react-router-dom';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import ChatBot from './ChatBot';
 
 function ETLDesigner() {
   const { projectId } = useParams();
@@ -22,6 +25,7 @@ function ETLDesigner() {
   const [editingSheetName, setEditingSheetName] = useState(false);
   const [sheetName, setSheetName] = useState('');
   const [compileDialogOpen, setCompileDialogOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   // Check backend health periodically
   useEffect(() => {
@@ -207,6 +211,48 @@ function ETLDesigner() {
     }
   };
 
+  const handleFlowSuggestion = (suggestion) => {
+    console.log('Handling flow suggestion:', suggestion);
+    // Ensure suggestion has the right structure
+    const suggestedNodes = suggestion.nodes || [];
+    const suggestedEdges = suggestion.edges || [];
+    
+    // Add new nodes to the active sheet
+    const activeSheetData = sheets[activeSheet];
+    if (activeSheetData) {
+      // Generate unique IDs for new nodes
+      const newNodes = suggestedNodes.map(node => ({
+        ...node,
+        id: `${node.data.componentData.id}-${Date.now()}`,
+        position: { x: 100, y: 100 * (currentSheet.nodes.length + 1) },
+        width: 150,
+        data: {
+          ...node.data,
+          handles: []
+        }
+      }));
+      console.log('New nodes:', newNodes);
+      
+      // Update edge references with new node IDs
+      const newEdges = suggestedEdges.map(edge => ({
+        ...edge,
+        id: `edge-${Date.now()}`,
+        type: 'default',
+        source: newNodes.find(n => n.id === edge.source)?.id || edge.source,
+        target: newNodes.find(n => n.id === edge.target)?.id || edge.target
+      }));
+      console.log('New edges:', newEdges);
+      
+      const updatedSheet = {
+        ...activeSheetData,
+        nodes: [...activeSheetData.nodes, ...newNodes],
+        edges: [...activeSheetData.edges, ...newEdges]
+      };
+      console.log('Updated sheet:', updatedSheet);
+      handleSheetUpdate(activeSheetData.id, updatedSheet.nodes, updatedSheet.edges);
+    }
+  };
+
   return (
     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <AppBar position="static">
@@ -314,6 +360,11 @@ function ETLDesigner() {
             </IconButton>
           </span>
         </Tooltip>
+        <Tooltip title="AI Assistant">
+          <IconButton onClick={() => setChatOpen(true)}>
+            <SmartToyIcon />
+          </IconButton>
+        </Tooltip>
       </Box>
       {sheets.map((sheet, index) => (
         <Box
@@ -352,6 +403,12 @@ function ETLDesigner() {
           projectId={projectId}
         />
       )}
+      <ChatBot 
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        onFlowSuggestion={handleFlowSuggestion}
+        currentSheet={currentSheet}
+      />
     </Box>
   );
 }

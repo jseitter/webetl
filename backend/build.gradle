@@ -42,6 +42,14 @@ dependencies {
     webetlRuntimeOnly 'mysql:mysql-connector-java:8.0.33'
     webetlRuntimeOnly 'com.h2database:h2:2.3.232'
 
+    // Official OpenAI client
+    implementation 'com.openai:openai-java:0.26.1'
+    // JSON processing
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
+    // Validation
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    // Rate limiting (optional, but recommended for AI API calls)
+    implementation 'com.github.vladimir-bukhtoyarov:bucket4j-core:7.6.0'
 }
 
 test {
