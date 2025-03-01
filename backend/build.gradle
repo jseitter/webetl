@@ -37,7 +37,8 @@ dependencies {
     compilerOnly 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
     compilerOnly 'org.slf4j:slf4j-api:2.0.7'
     compilerOnly 'org.slf4j:slf4j-simple:2.0.7'
-
+    implementation 'com.palantir.javapoet:javapoet:0.6.0'
+    
     webetlRuntimeOnly 'org.postgresql:postgresql:42.7.4'
     webetlRuntimeOnly 'mysql:mysql-connector-java:8.0.33'
     webetlRuntimeOnly 'com.h2database:h2:2.3.232'

@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.io.PrintStream;
 import java.io.ByteArrayOutputStream;
+import org.springframework.beans.factory.annotation.Value;
 
 import io.webetl.compiler.CompilationException;
 import io.webetl.compiler.FlowCompilerCLI;
@@ -14,13 +15,16 @@ import io.webetl.compiler.FlowCompilerCLI;
 public class CompilerService {
     private final Path dataDirectory;
     private final SimpMessagingTemplate messagingTemplate;
+    private final boolean useNewCompiler;
 
     public CompilerService(
         Path dataDirectory, 
-        SimpMessagingTemplate messagingTemplate
+        SimpMessagingTemplate messagingTemplate,
+        @Value("${compiler.use-new-implementation:false}") boolean useNewCompiler
     ) {
         this.dataDirectory = dataDirectory;
         this.messagingTemplate = messagingTemplate;
+        this.useNewCompiler = useNewCompiler;
     }
 
     public CompletableFuture<Void> compileSheet(String projectId, String sheetId) {
@@ -41,7 +45,8 @@ public class CompilerService {
                     FlowCompilerCLI.compileSheet(
                         projectDir.resolve("sheets").resolve(sheetId + ".json").toString(),
                         compiledDir.resolve(sheetId + ".jar").toString(),
-                       true 
+                        true,
+                        useNewCompiler
                     );
                     
                     // Send captured output

@@ -28,7 +28,13 @@ public class FlowCompilerCLI {
                         printUsage();
                         System.exit(1);
                     }
-                    compileSheetCLI(args[1], args[2], args.length > 3 && "--verbose".equals(args[3]));
+                    boolean useNewCompiler = false;
+                    boolean verbose = false;
+                    for (int i = 3; i < args.length; i++) {
+                        if ("--verbose".equals(args[i])) verbose = true;
+                        if ("--new-compiler".equals(args[i])) useNewCompiler = true;
+                    }
+                    compileSheetCLI(args[1], args[2], verbose, useNewCompiler);
                     break;
                 default:
                     System.err.println("Unknown command: " + command);
@@ -37,16 +43,15 @@ public class FlowCompilerCLI {
             }
 
         } catch (Exception e) {
-            System.err.println("Compilation failed: " + e.getMessage());
-            e.printStackTrace();
+            System.err.println("Error: " + e.getMessage());
             System.exit(1);
         }
     }
     
     private static void printUsage() {
-        System.err.println("Usage:");
-        System.err.println("  List sheets:  FlowCompilerCLI list");
-        System.err.println("  Compile:      FlowCompilerCLI compile <input-sheet.json> <output.jar> [--verbose]");
+        System.out.println("Usage:");
+        System.out.println("  List sheets:  compile.sh list");
+        System.out.println("  Compile:      compile.sh compile <input-sheet.json> <output.jar> [--verbose] [--new-compiler]");
     }
     
     private static void listSheets() throws Exception {
@@ -86,24 +91,30 @@ public class FlowCompilerCLI {
         });
     }
     
-    private static void compileSheetCLI(String inputFile, String outputFile, boolean verbose) {
+    private static void compileSheetCLI(String inputFile, String outputFile, boolean verbose, boolean useNewCompiler) {
         try {
-            compileSheet(inputFile, outputFile, verbose);
+            compileSheet(inputFile, outputFile, verbose, useNewCompiler);
         } catch (Exception e) {
             System.err.println("Compilation failed: " + e.getMessage());
             System.exit(1);
         }
     }
 
-    public static void compileSheet(String inputFile, String outputFile, boolean verbose) throws CompilationException {
+    public static void compileSheet(String inputFile, String outputFile, boolean verbose, boolean useNewCompiler) throws CompilationException {
         // Read and parse sheet
         try {
             ObjectMapper mapper = new ObjectMapper();
             Sheet sheet = mapper.readValue(new File(inputFile), Sheet.class);
 
             // Compile
-            FlowCompiler compiler = new FlowCompiler();
-            File jarFile = compiler.compileToJar(sheet, verbose);
+            File jarFile;
+            if (useNewCompiler) {
+                FlowCompilerNG compiler = new FlowCompilerNG();
+                jarFile = compiler.compileToJar(sheet, verbose);
+            } else {
+                FlowCompiler compiler = new FlowCompiler();
+                jarFile = compiler.compileToJar(sheet, verbose);
+            }
 
             // Copy to output location
             Files.copy(jarFile.toPath(), new File(outputFile).toPath(), 
