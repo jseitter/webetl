@@ -1,0 +1,7 @@
+{
+  "extension": ["js"],
+  "spec": "tests/e2e/**/*.test.js",
+  "require": "esm",
+  "timeout": 10000,
+  "exit": true
+} 

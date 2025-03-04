@@ -30,16 +30,37 @@ public class CsvDestinationComponent extends DestinationComponent {
     }
 
     @Override
-    public void execute(ExecutionContext context) {
+    protected void executeComponent(ExecutionContext context) throws Exception {
         // Implementation for CSV writing
-        System.out.println("Executing CSV destination component");
-            Row row;
-            try {
-                System.out.println("waiting for Row");
-                row = super.takeInputRow();
-                System.out.println("consume Row: " + row );
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+        info(context, "Executing CSV destination component");
+        
+        try {
+            info(context, "Waiting for incoming rows...");
+            Row row = super.takeInputRow();
+            info(context, "Processing row: " + row);
+            
+            // Add actual CSV writing logic here
+            String filepath = getParameter("filepath", String.class);
+            String delimiter = getParameter("delimiter", String.class);
+            
+            info(context, "Writing to file: " + filepath + " with delimiter: " + delimiter);
+            
+            // Implement actual file writing logic
+            
+        } catch (InterruptedException e) {
+            error(context, "CSV writing was interrupted", e);
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            error(context, "Error writing CSV data", e);
+            throw e;
+        }
+    }
+    
+    private <T> T getParameter(String name, Class<T> type) {
+        return (T) getParameters().stream()
+            .filter(p -> p.getName().equals(name))
+            .findFirst()
+            .map(p -> p.getValue())
+            .orElse(null);
     }
 } 

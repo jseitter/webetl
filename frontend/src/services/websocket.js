@@ -22,7 +22,16 @@ class WebSocketService {
     subscribeToCompiler(sheetId, callback) {
         return this.stompClient.subscribe(
             `/topic/compiler/${sheetId}`,
-            message => callback(message.body)
+            message => {
+                try {
+                    // Try to parse as JSON for the new sequenced format
+                    const parsed = JSON.parse(message.body);
+                    callback(parsed);
+                } catch (e) {
+                    // Fall back to string format for backward compatibility
+                    callback(message.body);
+                }
+            }
         );
     }
 

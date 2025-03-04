@@ -18,6 +18,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { Link } from 'react-router-dom';
 
 function ProjectList() {
   const [projects, setProjects] = useState([]);
@@ -68,10 +69,11 @@ function ProjectList() {
   };
 
   return (
-    <Box sx={{ maxWidth: 800, margin: 'auto', mt: 4, p: 2 }}>
+    <Box sx={{ maxWidth: 800, margin: 'auto', mt: 4, p: 2 }} className="project-list" data-testid="project-list">
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
         <Typography variant="h4">ETL Projects</Typography>
         <Button
+          data-testid="create-project-button"
           variant="contained"
           startIcon={<AddIcon />}
           onClick={() => setNewProjectDialog(true)}
@@ -104,6 +106,7 @@ function ProjectList() {
               primary={project.name}
               onClick={() => handleOpenProject(project.id)}
               sx={{ cursor: 'pointer' }}
+              data-testid={`project-item-${project.name}`}
             />
           </ListItem>
         ))}

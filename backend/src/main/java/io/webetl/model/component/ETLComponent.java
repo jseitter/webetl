@@ -74,6 +74,98 @@ public abstract class ETLComponent implements ExecutableComponent {
         return values;
     }
 
+    @Override
+    public void execute(ExecutionContext context) throws Exception {
+        // Register this component's ID with the context for logging
+        String previousComponent = context.getCurrentComponentId();
+        
+        try {
+            if (this.id != null) {
+                context.setCurrentComponentId(this.id);
+            }
+            
+            // Log component execution start
+            context.info("Starting execution");
+            
+            // Perform component-specific execution
+            executeComponent(context);
+            
+            // Log successful completion
+            context.info("Execution completed successfully");
+        } catch (Exception e) {
+            // Log error
+            context.error("Execution failed", e);
+            throw e;
+        } finally {
+            // Restore previous component context
+            if (previousComponent != null) {
+                context.setCurrentComponentId(previousComponent);
+            } else {
+                context.clearCurrentComponentId();
+            }
+        }
+    }
+    
+    /**
+     * Component-specific execution logic. Subclasses should override this method
+     * instead of the execute method to benefit from the standard logging.
+     *
+     * @param context the execution context
+     * @throws Exception if an error occurs during execution
+     */
+    protected abstract void executeComponent(ExecutionContext context) throws Exception;
+    
+    /**
+     * Helper method to log at DEBUG level.
+     *
+     * @param context the execution context
+     * @param message the message to log
+     */
+    protected void debug(ExecutionContext context, String message) {
+        context.debug(message);
+    }
+    
+    /**
+     * Helper method to log at INFO level.
+     *
+     * @param context the execution context
+     * @param message the message to log
+     */
+    protected void info(ExecutionContext context, String message) {
+        context.info(message);
+    }
+    
+    /**
+     * Helper method to log at WARN level.
+     *
+     * @param context the execution context
+     * @param message the message to log
+     */
+    protected void warn(ExecutionContext context, String message) {
+        context.warn(message);
+    }
+    
+    /**
+     * Helper method to log at ERROR level.
+     *
+     * @param context the execution context
+     * @param message the message to log
+     */
+    protected void error(ExecutionContext context, String message) {
+        context.error(message);
+    }
+    
+    /**
+     * Helper method to log an exception at ERROR level.
+     *
+     * @param context the execution context
+     * @param message the message to log
+     * @param e the exception
+     */
+    protected void error(ExecutionContext context, String message, Throwable e) {
+        context.error(message, e);
+    }
+
     // Getters and setters
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -99,6 +191,14 @@ public abstract class ETLComponent implements ExecutableComponent {
 
     public void setImplementationClass(String implementationClass) {
         this.implementationClass = implementationClass;
+    }
+
+    public boolean isSupportsControlFlow() {
+        return supportsControlFlow;
+    }
+
+    public void setSupportsControlFlow(boolean supportsControlFlow) {
+        this.supportsControlFlow = supportsControlFlow;
     }
 
 } 

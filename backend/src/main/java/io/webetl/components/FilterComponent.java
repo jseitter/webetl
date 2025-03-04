@@ -23,17 +23,58 @@ public class FilterComponent extends TransformComponent {
     }
 
     @Override
-    public void execute(ExecutionContext context) {
+    protected void executeComponent(ExecutionContext context) throws Exception {
         // Implementation for filtering
-        System.out.println("Executing filter component");
-        Row row;
+        info(context, "Executing filter component");
+        
+        String condition = getParameter("condition", String.class);
+        info(context, "Using filter condition: " + condition);
+        
         try {
-            System.out.println("waiting for Row");
-            row = super.takeInputRow();
-            System.out.println("passing Row: " + row + " to next component");
-            sendRow(row);
+            while (true) {
+                info(context, "Waiting for row to filter");
+                Row row = super.takeInputRow();
+                
+                if (row.isTerminator()) {
+                    info(context, "Received terminator row, ending filter process");
+                    sendRow(row); // Pass the terminator to the next component
+                    break;
+                }
+                
+                debug(context, "Filtering row: " + row);
+                
+                // TODO: Implement actual filtering based on condition
+                // For now, we're passing all rows
+                boolean passes = evaluateCondition(row, condition);
+                
+                if (passes) {
+                    info(context, "Row passed filter, forwarding to next component");
+                    sendRow(row);
+                } else {
+                    debug(context, "Row filtered out, not forwarding");
+                }
+            }
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            warn(context, "Filter component was interrupted");
+            Thread.currentThread().interrupt();
+            throw e;
+        } catch (Exception e) {
+            error(context, "Error in filter component", e);
+            throw e;
         }
+    }
+    
+    private boolean evaluateCondition(Row row, String condition) {
+        // TODO: Implement actual condition evaluation
+        // This is a placeholder that passes all rows
+        return true;
+    }
+    
+    private <T> T getParameter(String name, Class<T> type) {
+        return (T) getParameters().stream()
+            .filter(p -> p.getName().equals(name))
+            .findFirst()
+            .map(p -> p.getValue())
+            .orElse(null);
     }
 } 

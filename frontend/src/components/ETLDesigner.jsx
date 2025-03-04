@@ -18,6 +18,7 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogTitle from '@mui/material/DialogTitle';
 import DeleteIcon from '@mui/icons-material/Delete';
+import CloseIcon from '@mui/icons-material/Close';
 
 function ETLDesigner() {
   const { projectId } = useParams();
@@ -74,6 +75,17 @@ function ETLDesigner() {
   useEffect(() => {
     loadSheets();
   }, [projectId]);
+
+  // Keep currentSheet in sync with the activeSheet
+  useEffect(() => {
+    if (sheets.length > 0 && activeSheet < sheets.length) {
+      setCurrentSheet(sheets[activeSheet]);
+      setSheetName(sheets[activeSheet].name);
+    } else if (sheets.length === 0) {
+      setCurrentSheet(null);
+      setSheetName('');
+    }
+  }, [activeSheet, sheets]);
 
   const loadSheets = async () => {
     try {
@@ -263,8 +275,14 @@ function ETLDesigner() {
   const handleDeleteSheet = async () => {
     try {
       await axios.delete(`/api/projects/${projectId}/sheets/${deleteDialog.sheetId}`);
-      setSheets(sheets.filter(s => s.id !== deleteDialog.sheetId));
+      
+      // Filter out the deleted sheet
+      const updatedSheets = sheets.filter(s => s.id !== deleteDialog.sheetId);
+      setSheets(updatedSheets);
+      
+      // Reset to the first sheet or null if no sheets left
       setActiveSheet(0);
+      
       setDeleteDialog({ open: false, sheetId: null });
       setSnackbar({
         open: true,
@@ -279,6 +297,12 @@ function ETLDesigner() {
         severity: 'error'
       });
     }
+  };
+
+  const handleRemoveUnsavedSheet = (sheetId) => {
+    const updatedSheets = sheets.filter(s => s.id !== sheetId);
+    setSheets(updatedSheets);
+    setActiveSheet(Math.max(0, activeSheet - 1));
   };
 
   return (
@@ -363,15 +387,22 @@ function ETLDesigner() {
               key={sheet.id} 
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <span>{sheet.name}</span>
+                  <span>{`${unsavedChanges.has(sheet.id) ? '* ' : ''}${sheet.name}`}</span>
                   <IconButton
                     size="small"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setDeleteDialog({ open: true, sheetId: sheet.id });
+                      if (!sheet.id || unsavedChanges.has(sheet.id)) {
+                        handleRemoveUnsavedSheet(sheet.id);
+                      } else {
+                        setDeleteDialog({ open: true, sheetId: sheet.id });
+                      }
                     }}
                   >
-                    <DeleteIcon fontSize="small" />
+                    {!sheet.id || unsavedChanges.has(sheet.id) ? 
+                      <CloseIcon fontSize="small" /> : 
+                      <DeleteIcon fontSize="small" />
+                    }
                   </IconButton>
                 </Box>
               }
@@ -382,7 +413,11 @@ function ETLDesigner() {
         <Tooltip title="Compile">
           <span>
             <IconButton
-              onClick={() => setCompileDialogOpen(true)}
+              onClick={() => {
+                if (sheets[activeSheet]) {
+                  setCompileDialogOpen(true);
+                }
+              }}
               disabled={!isBackendAvailable || !sheets[activeSheet]}
               sx={{ mr: 1 }}
             >
@@ -436,11 +471,11 @@ function ETLDesigner() {
           {snackbar.message}
         </Alert>
       </Snackbar>
-      {currentSheet && (
+      {sheets.length > 0 && activeSheet < sheets.length && (
         <CompileDialog
           open={compileDialogOpen}
           onClose={() => setCompileDialogOpen(false)}
-          sheetId={currentSheet.id}
+          sheetId={sheets[activeSheet].id}
           projectId={projectId}
         />
       )}

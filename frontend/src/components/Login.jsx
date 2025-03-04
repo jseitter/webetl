@@ -34,7 +34,7 @@ function Login({ onLogin }) {
           {error}
         </Typography>
       )}
-      <form onSubmit={handleSubmit}>
+      <form className="login-form" onSubmit={handleSubmit}>
         <TextField
           fullWidth
           label="Username"

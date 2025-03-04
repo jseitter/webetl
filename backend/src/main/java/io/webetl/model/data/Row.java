@@ -5,21 +5,22 @@ import java.util.HashMap;
 import java.util.Collections;
 
 /**
- * Row is a collection of values.
+ * Row represents a row of data in the ETL pipeline.
  */
 public class Row {
-    private Map<String, Object> values;  // column name -> value
+    private String id;
+    private Map<String, Object> data;
+    private boolean terminator = false;
     private RowMetadata metadata;        // optional: timestamp, source info, etc.
     private Schema schema;               // defines the structure of this row
-    private boolean isTerminator = false;
 
     public Row() {
-        this.values = new HashMap<>();
+        this.data = new HashMap<>();
     }
 
     public Row(String line) {
-        this.values = new HashMap<>();
-        this.values.put("line", line);
+        this.data = new HashMap<>();
+        this.data.put("line", line);
         this.metadata = new RowMetadata();
     }
 
@@ -28,24 +29,48 @@ public class Row {
             throw new IllegalArgumentException(
                 String.format("Value %s is not valid for column %s", value, column));
         }
-        values.put(column, value);
+        data.put(column, value);
     }
 
     public Object getValue(String column) {
-        return values.get(column);
+        return data.get(column);
     }
 
     public Map<String, Object> getValues() {
-        return Collections.unmodifiableMap(values);
+        return Collections.unmodifiableMap(data);
     }
 
     public static Row createTerminator() {
         Row row = new Row();
-        row.isTerminator = true;
+        row.terminator = true;
         return row;
     }
     
     public boolean isTerminator() {
-        return isTerminator;
+        return terminator;
+    }
+    
+    public String getId() {
+        return id;
+    }
+    
+    public void setId(String id) {
+        this.id = id;
+    }
+    
+    public Map<String, Object> getData() {
+        return data;
+    }
+    
+    public void setData(Map<String, Object> data) {
+        this.data = data;
+    }
+    
+    @Override
+    public String toString() {
+        if (isTerminator()) {
+            return "Row[TERMINATOR]";
+        }
+        return "Row[id=" + id + ", data=" + data + "]";
     }
 } 

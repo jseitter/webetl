@@ -81,49 +81,49 @@ public class FlowCompiler {
             System.out.println("Flow structure validation successful");
 
             System.out.println("Generating compilation units...");
-            // Generate Java source code
-            String className = "Flow_" + sheet.getId().replace("-", "_");
+        // Generate Java source code
+        String className = "Flow_" + sheet.getId().replace("-", "_");
             String sourceCode = generateSourceCode(className, sheet, verbose);
            if(verbose) System.out.println("Source code: " + sourceCode);
-            // Generate CompiledFlow class
+        // Generate CompiledFlow class
             /**
              * CompiledFlow is an abstract class that defines the execute method.
              * It also defines a log method that prints a message to the console.
              * The log method is protected to be accessible to the generated class.
              */
-            String compiledFlowSource = 
-                "public abstract class CompiledFlow {\n" +
+        String compiledFlowSource = 
+            "public abstract class CompiledFlow {\n" +
                 "    public abstract void execute(io.webetl.runtime.ExecutionContext context) throws Exception;\n" +
-                "    protected void log(String message) {\n" +
-                "        System.out.println(\"[\" + getClass().getSimpleName() + \"] \" + message);\n" +
-                "    }\n" +
-                "}\n";
-            
-            // Write both source files
-            Path sourcePath = tempDir.resolve(className + ".java");
-            Path compiledFlowPath = tempDir.resolve("CompiledFlow.java");
-            Files.writeString(compiledFlowPath, compiledFlowSource);
-            Files.writeString(sourcePath, sourceCode);
-            
-            // Compile both sources
-            JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-            DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
-            StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, null, null);
+            "    protected void log(String message) {\n" +
+            "        System.out.println(\"[\" + getClass().getSimpleName() + \"] \" + message);\n" +
+            "    }\n" +
+            "}\n";
+        
+        // Write both source files
+        Path sourcePath = tempDir.resolve(className + ".java");
+        Path compiledFlowPath = tempDir.resolve("CompiledFlow.java");
+        Files.writeString(compiledFlowPath, compiledFlowSource);
+        Files.writeString(sourcePath, sourceCode);
+        
+        // Compile both sources
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+        StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, null, null);
             
             // Add classpath
             List<String> options = new ArrayList<>();
             String classpath = System.getProperty("java.class.path");
             options.add("-classpath");
             options.add(classpath);
-            
-            Iterable<? extends JavaFileObject> compilationUnits = fileManager
-                .getJavaFileObjectsFromFiles(Arrays.asList(sourcePath.toFile(), compiledFlowPath.toFile()));
-            
-            JavaCompiler.CompilationTask task = compiler.getTask(
+        
+        Iterable<? extends JavaFileObject> compilationUnits = fileManager
+            .getJavaFileObjectsFromFiles(Arrays.asList(sourcePath.toFile(), compiledFlowPath.toFile()));
+        
+        JavaCompiler.CompilationTask task = compiler.getTask(
                 null, fileManager, diagnostics, options, null, compilationUnits);
-            
-            boolean success = task.call();
-            if (!success) {
+        
+        boolean success = task.call();
+        if (!success) {
                 StringBuilder error = new StringBuilder();
                 error.append("Compilation failed!\n\n");
                 error.append("Compiler Errors:\n");
@@ -143,21 +143,21 @@ public class FlowCompiler {
                 }
                 throw new CompilationException(
                     error.toString());
-            }
+        }
+        
+        // Create JAR file
+        Path classFile = tempDir.resolve(className + ".class");
+        Path jarPath = tempDir.resolve("flow.jar");
+        
+        try (JarOutputStream jos = new JarOutputStream(new FileOutputStream(jarPath.toFile()))) {
+            // Add both compiled classes
+            jos.putNextEntry(new JarEntry(className + ".class"));
+            jos.write(Files.readAllBytes(classFile));
+            jos.closeEntry();
             
-            // Create JAR file
-            Path classFile = tempDir.resolve(className + ".class");
-            Path jarPath = tempDir.resolve("flow.jar");
-            
-            try (JarOutputStream jos = new JarOutputStream(new FileOutputStream(jarPath.toFile()))) {
-                // Add both compiled classes
-                jos.putNextEntry(new JarEntry(className + ".class"));
-                jos.write(Files.readAllBytes(classFile));
-                jos.closeEntry();
-                
-                jos.putNextEntry(new JarEntry("CompiledFlow.class"));
-                jos.write(Files.readAllBytes(tempDir.resolve("CompiledFlow.class")));
-                jos.closeEntry();
+            jos.putNextEntry(new JarEntry("CompiledFlow.class"));
+            jos.write(Files.readAllBytes(tempDir.resolve("CompiledFlow.class")));
+            jos.closeEntry();
                 
                 // Add runtime classes
                 Path runtimeJar = findRuntimeJar();
@@ -171,18 +171,18 @@ public class FlowCompiler {
                         }
                     }
                 }
-                
-                // Add manifest
-                Manifest manifest = new Manifest();
-                manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
-                manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS, className);
-                
-                jos.putNextEntry(new JarEntry("META-INF/MANIFEST.MF"));
-                manifest.write(jos);
-                jos.closeEntry();
-            }
             
-            return jarPath.toFile();
+            // Add manifest
+            Manifest manifest = new Manifest();
+            manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+            manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS, className);
+            
+            jos.putNextEntry(new JarEntry("META-INF/MANIFEST.MF"));
+            manifest.write(jos);
+            jos.closeEntry();
+        }
+        
+        return jarPath.toFile();
         } catch (Throwable e) {
             if (e instanceof CompilationException) {
                 throw (CompilationException) e;

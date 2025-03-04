@@ -42,6 +42,9 @@ dependencies {
     webetlRuntimeOnly 'org.postgresql:postgresql:42.7.4'
     webetlRuntimeOnly 'mysql:mysql-connector-java:8.0.33'
     webetlRuntimeOnly 'com.h2database:h2:2.3.232'
+    webetlRuntimeOnly 'org.slf4j:slf4j-api:2.0.9'
+    webetlRuntimeOnly 'ch.qos.logback:logback-classic:1.4.11'  // Logback implementation
+    webetlRuntimeOnly 'ch.qos.logback:logback-core:1.4.11'
 
     // Official OpenAI client
     implementation 'com.openai:openai-java:0.26.1'
@@ -85,12 +88,21 @@ task runtimeJar(type: Jar) {
     archiveVersion = ''
     archiveClassifier = ''
     
+    manifest {
+        attributes 'Main-Class': 'io.webetl.runtime.JarLauncher'
+    }
+    
     from sourceSets.main.output
+    
+    // Include all the runtime classes needed by the flow system
     include 'io/webetl/components/**'
     include 'io/webetl/runtime/**'
-    include 'io/webetl/model/component/**'
-    include 'io/webetl/model/data/**'
-    
+    include 'io/webetl/model/**'  // Include ALL model classes and subpackages
+    include 'io/webetl/compiler/CompiledFlow.class'
+    include 'java/util/Queue.class'
+    include 'java/util/concurrent/**'
+    include 'org/slf4j/**'
+    include 'ch/qos/logback/**'
     
     dependsOn configurations.webetlRuntimeOnly
     from {
@@ -147,7 +159,16 @@ task createRelease(type: Zip) {
             fcd.relativePath = new RelativePath(true, segments)
         }
         includeEmptyDirs = false
-   }
+    }
+    
+    // Add the template file to the cfg directory
+    from('src/main/resources') {
+        include 'application-secrets.properties.template'
+        include 'README-config.md'
+        into 'cfg'
+        rename 'README-config.md', 'README.md'
+    }
+    
     destinationDirectory = file("$buildDir/release")
     archiveFileName = "webetl-${version}.zip"
     fileMode = 0755
@@ -233,7 +254,15 @@ bootJar {
             println "Including frontend file: ${file.path}"
         }
     }
+    
+    // Exclude the actual secrets file from the JAR
+    exclude 'BOOT-INF/classes/application-secrets.properties'
 }
 
 // Make sure bootJar runs after frontend:build
 bootJar.mustRunAfter(':frontend:build')
+
+// Modify the processResources task to exclude application-secrets.properties
+processResources {
+    exclude 'application-secrets.properties'
+}
