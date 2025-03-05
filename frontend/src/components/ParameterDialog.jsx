@@ -7,6 +7,10 @@ import {
 
 function ParameterDialog({ open, onClose, node, onSave }) {
   const [values, setValues] = useState({});
+  
+  // Add debug logging to help diagnose the issue
+  console.log('ParameterDialog rendering with values:', values);
+  console.log('Node data:', node?.data?.componentData?.parameters);
 
   useEffect(() => {
     if (node?.data?.componentData?.parameters) {
@@ -14,16 +18,28 @@ function ParameterDialog({ open, onClose, node, onSave }) {
       node.data.componentData.parameters.forEach(param => {
         initialValues[param.name] = param.value || '';
       });
+      console.log('Setting initial values:', initialValues);
       setValues(initialValues);
     }
   }, [node]);
 
   const handleSave = () => {
+    console.log('Saving values:', values);
     onSave(values);
     onClose();
   };
 
+  const handleChange = (paramName, value) => {
+    console.log(`Changing ${paramName} to:`, value);
+    setValues(prevValues => ({
+      ...prevValues,
+      [paramName]: value
+    }));
+  };
+
   const renderParameter = (param) => {
+    console.log(`Rendering parameter ${param.name}, type: ${param.parameterType}, maxLength: ${param.maxLength}`);
+    
     switch (param.parameterType) {
       case 'string':
         return (
@@ -32,10 +48,10 @@ function ParameterDialog({ open, onClose, node, onSave }) {
             fullWidth
             label={param.label}
             value={values[param.name] || ''}
-            onChange={(e) => setValues({...values, [param.name]: e.target.value})}
+            onChange={(e) => handleChange(param.name, e.target.value)}
             helperText={param.description}
             required={param.required}
-            inputProps={{ maxLength: param.maxLength }}
+            inputProps={{ maxLength: param.maxLength && param.maxLength > 0 ? param.maxLength : 255 }}
           />
         );
       case 'secret':
@@ -46,7 +62,7 @@ function ParameterDialog({ open, onClose, node, onSave }) {
             type="password"
             label={param.label}
             value={values[param.name] || ''}
-            onChange={(e) => setValues({...values, [param.name]: e.target.value})}
+            onChange={(e) => handleChange(param.name, e.target.value)}
             helperText={param.description}
             required={param.required}
           />
@@ -60,12 +76,31 @@ function ParameterDialog({ open, onClose, node, onSave }) {
             rows={4}
             label={param.label}
             value={values[param.name] || ''}
-            onChange={(e) => setValues({...values, [param.name]: e.target.value})}
+            onChange={(e) => handleChange(param.name, e.target.value)}
             helperText={param.description}
             required={param.required}
           />
         );
+      case 'select':
+        return (
+          <FormControl key={param.name} fullWidth required={param.required}>
+            <InputLabel>{param.label}</InputLabel>
+            <Select
+              value={values[param.name] || ''}
+              onChange={(e) => handleChange(param.name, e.target.value)}
+              label={param.label}
+            >
+              {param.options?.map((option) => (
+                <MenuItem key={option} value={option}>{option}</MenuItem>
+              ))}
+            </Select>
+            {param.description && <FormHelperText>{param.description}</FormHelperText>}
+          </FormControl>
+        );
       // Add other parameter types as needed
+      default:
+        console.warn(`Unknown parameter type: ${param.parameterType}`);
+        return null;
     }
   };
 

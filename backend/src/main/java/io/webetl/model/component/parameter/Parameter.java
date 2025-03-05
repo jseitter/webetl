@@ -18,7 +18,8 @@ import lombok.experimental.SuperBuilder;
     @JsonSubTypes.Type(value = NumberParameter.class, name = "number"),
     @JsonSubTypes.Type(value = BooleanParameter.class, name = "boolean"),
     @JsonSubTypes.Type(value = SecretParameter.class, name = "secret"),
-    @JsonSubTypes.Type(value = SQLParameter.class, name = "sql")
+    @JsonSubTypes.Type(value = SQLParameter.class, name = "sql"),
+    @JsonSubTypes.Type(value = SelectParameter.class, name = "select")
 })
 public abstract class Parameter<T> {
     @JsonProperty("name")

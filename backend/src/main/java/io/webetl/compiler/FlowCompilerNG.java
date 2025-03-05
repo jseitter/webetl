@@ -308,7 +308,7 @@ public class FlowCompilerNG {
             .addModifiers(Modifier.PUBLIC)
             .addException(Exception.class)
             .addStatement("this.components = new $T<>()", HashMap.class);
-
+            
         // Create all component instances based on implementation class
         for (Map<String, Object> node : sheet.getNodes()) {
             Map<String, Object> data = (Map<String, Object>) node.get("data");
@@ -339,9 +339,101 @@ public class FlowCompilerNG {
             
             // Add component instance to map
             constructor.addStatement("components.put($S, $L)", nodeId, safeNodeId);
+            
+            // Set component parameters if available
+            List<?> parameters = (List<?>) componentData.get("parameters");
+            if (parameters != null && !parameters.isEmpty()) {
+                constructor.addComment("Set parameters for component: $L", nodeId);
+                for (Object paramObj : parameters) {
+                    String paramName;
+                    Object paramValue;
+                    String formattedValue;
+                    
+                    if (paramObj instanceof Map) {
+                        // Handle parameters as Map (from JSON deserialization)
+                        Map<String, Object> param = (Map<String, Object>) paramObj;
+                        paramName = (String) param.get("name");
+                        paramValue = param.get("value");
+                        
+                        if (paramValue != null) {
+                            formattedValue = formatParameterValue(param);
+                        } else {
+                            continue; // Skip parameters with null values
+                        }
+                    } else {
+                        // Handle parameters as Parameter objects (from Java code)
+                        try {
+                            // Use reflection to get parameter name and value
+                            Class<?> paramClass = paramObj.getClass();
+                            java.lang.reflect.Method getNameMethod = paramClass.getMethod("getName");
+                            java.lang.reflect.Method getValueMethod = paramClass.getMethod("getValue");
+                            
+                            paramName = (String) getNameMethod.invoke(paramObj);
+                            paramValue = getValueMethod.invoke(paramObj);
+                            
+                            if (paramValue == null) {
+                                continue; // Skip parameters with null values
+                            }
+                            
+                            // Format the value as a string literal for Java code
+                            if (paramValue instanceof String) {
+                                formattedValue = "\"" + escapeJavaString((String) paramValue) + "\"";
+                            } else if (paramValue instanceof Number || paramValue instanceof Boolean) {
+                                formattedValue = paramValue.toString();
+                            } else {
+                                formattedValue = "\"" + escapeJavaString(paramValue.toString()) + "\"";
+                            }
+                        } catch (Exception e) {
+                            // Log warning and skip this parameter if reflection fails
+                            log.warn("Failed to process parameter object: " + paramObj, e);
+                            continue;
+                        }
+                    }
+                    
+                    constructor.addStatement("(($T) $L).setParameter($S, $L)", 
+                        ClassName.get("io.webetl.model.component", "ETLComponent"),
+                        safeNodeId, 
+                        paramName, 
+                        formattedValue);
+                }
+            }
         }
         
         return constructor;
+    }
+    
+    /**
+     * Format a parameter value for Java code generation
+     */
+    private String formatParameterValue(Map<String, Object> param) {
+        Object value = param.get("value");
+        String parameterType = (String) param.get("parameterType");
+        
+        if (value == null) return "null";
+        
+        // Handle different parameter types
+        if ("string".equals(parameterType) || "secret".equals(parameterType) || "sql".equals(parameterType) || "select".equals(parameterType)) {
+            return "\"" + escapeJavaString(value.toString()) + "\"";
+        } else if ("number".equals(parameterType)) {
+            return value.toString();
+        } else if ("boolean".equals(parameterType)) {
+            return value.toString();
+        }
+        
+        // Default to string representation in quotes
+        return "\"" + escapeJavaString(value.toString()) + "\"";
+    }
+    
+    /**
+     * Escape special characters in Java strings
+     */
+    private String escapeJavaString(String input) {
+        if (input == null) return "";
+        return input.replace("\\", "\\\\")
+                   .replace("\"", "\\\"")
+                   .replace("\n", "\\n")
+                   .replace("\r", "\\r")
+                   .replace("\t", "\\t");
     }
 
     private MethodSpec.Builder buildExecuteMethod(Sheet sheet) {
@@ -351,7 +443,7 @@ public class FlowCompilerNG {
             .addParameter(ClassName.get("io.webetl.runtime", "ExecutionContext"), "context")
             .addException(Exception.class)
             .addStatement("log(\"Starting flow execution\")");
-            
+
         // First connect the component queues
         method.addComment("Connect all component queues");
         for (List<Map<String, Object>> path : dataFlowPaths) {
@@ -416,7 +508,7 @@ public class FlowCompilerNG {
             .addStatement("throw new $T(\"Execution interrupted\", e)", RuntimeException.class)
             .endControlFlow()
             .endControlFlow();
-            
+
         method.addStatement("log(\"Flow execution completed\")")
               .addStatement("return");
               
@@ -502,7 +594,7 @@ public class FlowCompilerNG {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
         StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, null, null);
-        
+
         // Find all source files to compile
         List<File> sourceFiles = new ArrayList<>();
         Files.walk(sourcePath)
@@ -546,7 +638,7 @@ public class FlowCompilerNG {
         manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS, "io.webetl.runtime.JarLauncher");
         manifest.getMainAttributes().put(new Attributes.Name("Flow-Class"), "io.webetl.generated." + className);
         manifest.getMainAttributes().put(new Attributes.Name("Created-By"), "WebETL Flow Compiler");
-        
+
         try (JarOutputStream jos = new JarOutputStream(new FileOutputStream(jarPath.toFile()), manifest)) {
             // Add the compiled flow class
             Files.walk(classesDir)
@@ -562,7 +654,7 @@ public class FlowCompilerNG {
                         throw new UncheckedIOException(e);
                     }
                 });
-
+                
             // Add core component interfaces and implementations
             addClassesToJar(jos, 
                 "io.webetl.compiler.CompiledFlow",
@@ -620,7 +712,7 @@ public class FlowCompilerNG {
         if (verbose) {
             System.out.println("Created JAR: " + jarPath);
         }
-        
+
         return jarPath.toFile();
     }
 
@@ -851,7 +943,11 @@ public class FlowCompilerNG {
             {"com.google.guava", "guava", "31.1-jre"},
             {"com.fasterxml.jackson.core", "jackson-core", "2.15.2"},
             {"com.fasterxml.jackson.core", "jackson-databind", "2.15.2"},
-            {"com.fasterxml.jackson.core", "jackson-annotations", "2.15.2"}
+            {"com.fasterxml.jackson.core", "jackson-annotations", "2.15.2"},
+            // Add database drivers
+            //TODO: make this dynamic based on components and their dependencies
+            {"org.postgresql", "postgresql", "42.6.0"},
+            {"com.mysql", "mysql-connector-j", "8.0.33"}
         };
         
         // Create a set of JAR name patterns to look for
@@ -861,6 +957,11 @@ public class FlowCompilerNG {
             String pattern = dep[1] + "-" + dep[2];
             dependencyPatterns.add(pattern);
         }
+        
+        // Add more generic patterns for database drivers
+        //TODO: recheck this
+        dependencyPatterns.add("postgresql");
+        dependencyPatterns.add("mysql-connector");
         
         // Also include any io.webetl jars that aren't the main application
         dependencyPatterns.add("webetl-model");
@@ -930,6 +1031,7 @@ public class FlowCompilerNG {
         if (verbose) {
             System.out.println("Dependency copying complete");
         }
+        
     }
     
     /**
@@ -943,6 +1045,12 @@ public class FlowCompilerNG {
             "io.webetl.runtime.ExecutionContext"
         };
         
+        // Database driver classes we need
+        String[] databaseDrivers = {
+            "org.postgresql.Driver",
+            "com.mysql.cj.jdbc.Driver"
+        };
+        
         try (JarFile jarFile = new JarFile(jarPath.toFile())) {
             Enumeration<JarEntry> entries = jarFile.entries();
             
@@ -951,12 +1059,24 @@ public class FlowCompilerNG {
                 String name = entry.getName();
                 
                 if (name.endsWith(".class")) {
+                    // Convert path format to class name format
                     String className = name.replace('/', '.').substring(0, name.length() - 6);
                     
-                    for (String essential : essentialPackages) {
-                        if (className.startsWith(essential) || className.equals(essential)) {
+                    // Check for essential packages/classes
+                    for (String pkg : essentialPackages) {
+                        if (className.startsWith(pkg) || className.equals(pkg)) {
                             if (verbose) {
-                                System.out.println("Found essential class " + className + " in " + jarPath.getFileName());
+                                System.out.println("JAR contains essential class: " + className);
+                            }
+                            return true;
+                        }
+                    }
+                    
+                    // Check for database drivers
+                    for (String driver : databaseDrivers) {
+                        if (className.equals(driver)) {
+                            if (verbose) {
+                                System.out.println("JAR contains database driver: " + className);
                             }
                             return true;
                         }
@@ -964,11 +1084,12 @@ public class FlowCompilerNG {
                 }
             }
         } catch (IOException e) {
+            // Could not read JAR, skip it
             if (verbose) {
-                System.out.println("Warning: Failed to analyze JAR: " + jarPath + " - " + e.getMessage());
+                System.out.println("Could not check JAR: " + jarPath + " - " + e.getMessage());
             }
-            return false;
         }
+        
         
         return false;
     }
