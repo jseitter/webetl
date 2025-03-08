@@ -63,6 +63,13 @@ public class ProjectController {
         return ResponseEntity.ok(updatedSheet);
     }
 
+    @GetMapping("/{projectId}/sheets/{sheetId}")
+    public ResponseEntity<Sheet> getSheet(
+            @PathVariable String projectId,
+            @PathVariable String sheetId) {
+        Sheet sheet = projectService.getProjectSheet(projectId, sheetId);
+        return ResponseEntity.ok(sheet);
+    }
     @PatchMapping("/{projectId}/sheets/{sheetId}")
     public ResponseEntity<Sheet> updateSheetName(
             @PathVariable String projectId,

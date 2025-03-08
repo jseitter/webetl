@@ -14,8 +14,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
+@Slf4j
 public class ProjectService {
     private final Path projectsPath;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -27,6 +29,7 @@ public class ProjectService {
         } catch (IOException e) {
             throw new RuntimeException("Could not initialize projects directory", e);
         }
+        log.info("ProjectService initialized");
     }
 
     private Path getProjectSheetsPath(String projectId) {
@@ -34,6 +37,7 @@ public class ProjectService {
     }
 
     public Project createProject(Project project) {
+        log.info("Creating project: {}", project.getName());
         project.setId(UUID.randomUUID().toString());
         try {
             // Create project directory and sheets subdirectory
@@ -49,6 +53,7 @@ public class ProjectService {
     }
 
     public Sheet createSheet(String projectId, Sheet sheet) {
+        log.info("Creating sheet for project: {}", projectId);
         try {
             sheet.setId(UUID.randomUUID().toString());
             Path sheetsPath = getProjectSheetsPath(projectId);
@@ -60,6 +65,7 @@ public class ProjectService {
     }
 
     public List<Sheet> getProjectSheets(String projectId) {
+        log.info("Getting project sheets for project: {}", projectId);
         try {
             Path sheetsPath = getProjectSheetsPath(projectId);
             if (!Files.exists(sheetsPath)) {
@@ -83,6 +89,7 @@ public class ProjectService {
     }
 
     public void deleteProject(String id) {
+        log.info("Deleting project: {}", id);
         try {
             Files.deleteIfExists(projectsPath.resolve(id + ".json"));
             // Also delete associated sheets
@@ -93,15 +100,18 @@ public class ProjectService {
     }
 
     private Project getProject(String id) throws IOException {
+        log.info("Getting project: {}", id);
         File projectFile = projectsPath.resolve(id + ".json").toFile();
         return objectMapper.readValue(projectFile, Project.class);
     }
 
     private void saveProject(Project project) throws IOException {
+        log.info("Saving project: {}", project.getId());
         objectMapper.writeValue(projectsPath.resolve(project.getId() + ".json").toFile(), project);
     }
 
     public List<Project> getAllProjects() {
+        log.info("Getting all projects");
         try {
             List<Project> projects = new ArrayList<>();
             Files.list(projectsPath)
@@ -124,6 +134,7 @@ public class ProjectService {
     }
 
     public Sheet updateSheet(String projectId, String sheetId, Sheet sheet) {
+        log.info("Updating sheet: {}", sheetId);
         try {
             Path sheetsPath = getProjectSheetsPath(projectId);
             // Create directories if they don't exist
@@ -138,6 +149,7 @@ public class ProjectService {
     }
 
     public Sheet getProjectSheet(String projectId, String sheetId) {
+        log.info("Getting sheet: {}", sheetId);
         try {
             Path sheetsPath = getProjectSheetsPath(projectId);
             File sheetFile = sheetsPath.resolve(sheetId + ".json").toFile();
@@ -148,12 +160,14 @@ public class ProjectService {
     }
 
     public Sheet updateSheetName(String projectId, String sheetId, String newName) {
+        log.info("Updating sheet name: {}", newName);
         Sheet sheet = getProjectSheet(projectId, sheetId);
         sheet.setName(newName);
         return updateSheet(projectId, sheetId, sheet);
     }
 
     public void moveSheetToTrash(String projectId, String sheetId) throws IOException {
+        log.info("Moving sheet to trash: {}", sheetId);
         Path sheetsPath = getProjectSheetsPath(projectId);
         Path trashPath = sheetsPath.resolve("trash");
         Files.createDirectories(trashPath);
