@@ -4,8 +4,6 @@ import com.palantir.javapoet.*;
 import io.webetl.model.Sheet;
 import io.webetl.model.component.ETLComponent;
 import io.webetl.model.component.ExecutableComponent;
-import io.webetl.model.component.InputQueueProvider;
-import io.webetl.model.component.OutputQueueProvider;
 import io.webetl.runtime.ExecutionContext;
 import io.webetl.runtime.FlowRunner;
 import io.webetl.runtime.JarClassLoader;
@@ -17,23 +15,17 @@ import org.springframework.stereotype.Service;
 import javax.lang.model.element.Modifier;
 import javax.tools.*;
 import java.io.*;
+import java.lang.annotation.Annotation;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.URL;
-import java.net.URLClassLoader;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 import java.util.jar.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.slf4j.MDC;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -41,8 +33,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.zip.ZipException;
@@ -116,17 +106,15 @@ public class FlowCompilerNG {
      * Third pass: Generate code
      */
     private JavaFile generateCode(Sheet sheet, String className, boolean verbose) {
-        // Add all necessary imports 
-        ClassName executableComponent = ClassName.get("io.webetl.model.component", "ExecutableComponent");
         ClassName etlComponent = ClassName.get("io.webetl.model.component", "ETLComponent");
         ClassName compiledFlow = ClassName.get("io.webetl.compiler", "CompiledFlow");
         ClassName executionContext = ClassName.get("io.webetl.runtime", "ExecutionContext");
         
         // Build the class using control flow and data flow information
+        // inherits compiled flow to get the execute method and the logging system
         TypeSpec.Builder flowClass = TypeSpec.classBuilder(className)
             .addModifiers(Modifier.PUBLIC)
-            .superclass(compiledFlow)
-            .addSuperinterface(executableComponent);
+            .superclass(compiledFlow);
         
         // Add components map field
         flowClass.addField(FieldSpec.builder(
@@ -145,20 +133,10 @@ public class FlowCompilerNG {
         // Add execute method using control and data flow
         MethodSpec.Builder executeMethod = buildExecuteMethod(sheet);
         
-        // Add main method for standalone execution
-        MethodSpec.Builder mainMethod = MethodSpec.methodBuilder("main")
-            .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
-            .addParameter(String[].class, "args")
-            .addCode("try {\n")
-            .addStatement("  new $L().execute(new ExecutionContext())", className)
-            .addCode("} catch (Exception e) {\n")
-            .addStatement("  e.printStackTrace()")
-            .addCode("}\n");
-        
+        // Build the complete flow class
         TypeSpec flowTypeSpec = flowClass
             .addMethod(constructor.build())
             .addMethod(executeMethod.build())
-            .addMethod(mainMethod.build())
             .build();
         
         JavaFile javaFile = JavaFile.builder("io.webetl.generated", flowTypeSpec)
@@ -180,19 +158,26 @@ public class FlowCompilerNG {
         try {
             log.info("Compiling flow: {}", sheet.getId());
             validateFlow(sheet);
-            String className = "Flow_" + UUID.randomUUID().toString().replace("-", "");
-            log.info("generated class name: {}", className);
             
-            // Execute compilation passes
+            // Extract component classes early
+            Set<Class<?>> componentClasses = extractComponentClasses(sheet, verbose);
+            
+            // Generate code for the flow
+            String className = "GeneratedFlow_" + sheet.getId().replaceAll("-", "_");
+            log.info("Generated class name: {}", className);
+            
+            // Build control flow and data flow paths
             buildControlFlow(sheet, verbose);
             buildDataFlowPaths(sheet, verbose);
+            
             JavaFile javaFile = generateCode(sheet, className, verbose);
 
-            // Compile and create JAR
-            return compileAndCreateJar(javaFile, className, verbose);
-
-        } catch (Exception e) {
+            // Create JAR with dependencies
+            return compileAndCreateJar(javaFile, className, componentClasses, verbose);
+        } catch (IOException e) {
             throw new CompilationException("Failed to compile flow: " + e.getMessage(), e);
+        } catch (Exception e) {
+            throw new CompilationException("Unexpected error while compiling flow: " + e.getMessage(), e);
         }
     }
 
@@ -250,7 +235,7 @@ public class FlowCompilerNG {
         // Find outgoing control flow edges
         edges.stream()
             .filter(edge -> edge.get("source").equals(nodeId))
-            // Look for explicit control flow edges based on handle names if available
+            // Filter edges to only include control flow connections
             .filter(edge -> {
                 Object sourceHandle = edge.get("sourceHandle");
                 return sourceHandle == null || 
@@ -281,11 +266,9 @@ public class FlowCompilerNG {
         // Find outgoing data flow edges
         edges.stream()
             .filter(edge -> edge.get("source").equals(nodeId))
-            // Look for explicit data flow edges based on handle names if available
+            // Filter edges to only include data flow connections
             .filter(edge -> {
                 Object sourceHandle = edge.get("sourceHandle");
-                // For data flow, we want edges that either don't specify a handle type
-                // or explicitly mention "data" and don't mention "control"
                 return sourceHandle == null || 
                        !(sourceHandle instanceof String) || 
                        ((String)sourceHandle).contains("data") ||
@@ -440,54 +423,83 @@ public class FlowCompilerNG {
         MethodSpec.Builder method = MethodSpec.methodBuilder("execute")
             .addModifiers(Modifier.PUBLIC)
             .addAnnotation(Override.class)
+            .returns(TypeName.VOID)  // Explicitly specify return type as void
             .addParameter(ClassName.get("io.webetl.runtime", "ExecutionContext"), "context")
             .addException(Exception.class)
-            .addStatement("log(\"Starting flow execution\")");
+            .addStatement("context.log(\"Starting flow execution\")");
 
-        // First connect the component queues
-        method.addComment("Connect all component queues");
-        for (List<Map<String, Object>> path : dataFlowPaths) {
-            connectDataFlowComponents(method, path);
+        // Add diagnostic logging for classloader issues
+        method.addStatement("context.log(\"Current classloader: \" + getClass().getClassLoader().getClass().getName())")
+              .addStatement("context.log(\"Parent classloader: \" + getClass().getClassLoader().getParent().getClass().getName())")
+              .addStatement("context.log(\"Thread context classloader: \" + Thread.currentThread().getContextClassLoader().getClass().getName())");
+
+        // Connect component queues
+        method.addComment("Connect component queues");
+        
+        // Generate unique path identifiers
+        for (int pathIndex = 0; pathIndex < dataFlowPaths.size(); pathIndex++) {
+            List<Map<String, Object>> path = dataFlowPaths.get(pathIndex);
+            String pathId = "path" + pathIndex;
+            
+            method.addComment("Data flow path " + pathIndex);
+            
+            for (int i = 0; i < path.size() - 1; i++) {
+                Map<String, Object> sourceNode = path.get(i);
+                Map<String, Object> targetNode = path.get(i + 1);
+                String sourceId = (String) sourceNode.get("id");
+                String targetId = (String) targetNode.get("id");
+                
+                // Use unique variable names with path identifier
+                String sourceVar = "source_" + pathId + "_" + i;
+                String targetVar = "target_" + pathId + "_" + i;
+                
+                method.addStatement("Object $L = components.get($S)", sourceVar, sourceId)
+                      .addStatement("Object $L = components.get($S)", targetVar, targetId)
+                      .beginControlFlow("if ($L instanceof $T && $L instanceof $T)",
+                          sourceVar, ClassName.get("io.webetl.model.component", "OutputQueueProvider"),
+                          targetVar, ClassName.get("io.webetl.model.component", "InputQueueProvider"))
+                      .addStatement("(($T)$L).registerInputQueue(($T)$L)",
+                          ClassName.get("io.webetl.model.component", "OutputQueueProvider"),
+                          sourceVar,
+                          ClassName.get("io.webetl.model.component", "InputQueueProvider"),
+                          targetVar)
+                      .endControlFlow();
+            }
         }
-        
+
         // Create worker threads for each component
-        method.addComment("Create worker threads for all components");
-        method.addStatement("$T<$T> workers = new $T<>()", 
-            ClassName.get(List.class), ClassName.get(Thread.class), ClassName.get(ArrayList.class));
-        
-        // Add all nodes to the worker list
-        for (Map<String, Object> node : sheet.getNodes()) {
-            String nodeId = (String) node.get("id");
-            // Create a valid Java variable name by replacing hyphens with underscores
-            String safeNodeId = nodeId.replaceAll("-", "_");
+        method.addComment("Create worker threads for each component");
+        method.addStatement("$T<$T> workers = new $T<>()", List.class, Thread.class, ArrayList.class);
+
+        for (Map<String, Object> node : controlFlowNodes) {
             Map<String, Object> data = (Map<String, Object>) node.get("data");
             Map<String, Object> componentData = (Map<String, Object>) data.get("componentData");
-            String nodeType = (String) node.get("type");
-            
-            // Skip start and stop nodes when creating threads
-            if ("start".equals(componentData.get("id")) || "stop".equals(componentData.get("id")) ||
-                "start".equals(nodeType) || "stop".equals(nodeType)) {
+            String nodeId = (String) node.get("id");
+            String safeNodeId = nodeId.replaceAll("-", "_");
+
+            // Skip start and stop nodes
+            if ("start".equals(componentData.get("id")) || "stop".equals(componentData.get("id"))) {
                 continue;
             }
-            
-            method.addComment("Create worker thread for component: $L", nodeId);
-            method.addStatement("final $T component$L = ($T) components.get($S)", 
-                ClassName.get("io.webetl.model.component", "ETLComponent"), 
-                safeNodeId, 
-                ClassName.get("io.webetl.model.component", "ETLComponent"), 
-                nodeId);
-            
-            // Create thread for each component with context tracking
+
             method.beginControlFlow("$T worker$L = new $T(() -> ",
                 ClassName.get(Thread.class), safeNodeId, ClassName.get(Thread.class))
                 .addStatement("String componentName = $S", getDisplayNameForComponent(nodeId, componentData))
                 .beginControlFlow("try")
                 .addStatement("context.setCurrentComponentId(componentName)")
-                .addStatement("log(\"Starting execution of \" + componentName)")
-                .addStatement("component$L.execute(context)", safeNodeId)
-                .addStatement("log(\"Execution of \" + componentName + \" completed\")")
+                .addStatement("context.log(\"Starting execution of \" + componentName)")
+                .addStatement("Object component = components.get($S)", nodeId)
+                .beginControlFlow("if (component instanceof $T)",
+                    ClassName.get("io.webetl.model.component", "ExecutableComponent"))
+                .addStatement("(($T)component).execute(context)",
+                    ClassName.get("io.webetl.model.component", "ExecutableComponent"))
+                .nextControlFlow("else")
+                .addStatement("throw new $T(\"Component \" + componentName + \" does not implement ExecutableComponent\")",
+                    ClassName.get(IllegalStateException.class))
+                .endControlFlow()
+                .addStatement("context.log(\"Execution of \" + componentName + \" completed\")")
                 .nextControlFlow("catch ($T e)", Exception.class)
-                .addStatement("log(\"Error during execution of \" + componentName + \": \" + e.getMessage())")
+                .addStatement("context.log(\"Error during execution of \" + componentName + \": \" + e.getMessage())")
                 .addStatement("e.printStackTrace()")
                 .endControlFlow()
                 .beginControlFlow("finally")
@@ -497,7 +509,7 @@ public class FlowCompilerNG {
                 .addStatement("workers.add(worker$L)", safeNodeId)
                 .addStatement("worker$L.start()", safeNodeId);
         }
-        
+
         // Wait for all workers to complete
         method.addComment("Wait for all worker threads to complete");
         method.beginControlFlow("for ($T worker : workers)", Thread.class)
@@ -509,8 +521,7 @@ public class FlowCompilerNG {
             .endControlFlow()
             .endControlFlow();
 
-        method.addStatement("log(\"Flow execution completed\")")
-              .addStatement("return");
+        method.addStatement("context.log(\"Flow execution completed\")");
               
         return method;
     }
@@ -555,24 +566,29 @@ public class FlowCompilerNG {
         }
     }
 
-    private File compileAndCreateJar(JavaFile javaFile, String className, boolean verbose) throws IOException {
-        // Create temp directories for source, class and jar files
+    private File compileAndCreateJar(JavaFile javaFile, String className, Set<Class<?>> componentClasses, boolean verbose) throws IOException {
+        // Create temporary directories for source, class, and jar files
         Path sourcePath = tempDir.resolve("src");
-        Files.createDirectories(sourcePath);
-        Path classesDir = tempDir.resolve("classes");
-        Files.createDirectories(classesDir);
+        Path classPath = tempDir.resolve("classes");
         Path libDir = tempDir.resolve("META-INF/lib");
+        
+        // Create directories if they don't exist
+        Files.createDirectories(sourcePath);
+        Files.createDirectories(classPath);
         Files.createDirectories(libDir);
         
-        // Write the generated flow class (this is the only class we need to generate)
+        // Write source file
         javaFile.writeTo(sourcePath);
         
-        // Create classpath with dependencies
-        Path runtimeJar = findRuntimeJar();
-        copyDependencies(libDir, runtimeJar, verbose);
+        
+        // Copy dependencies to lib directory
+        Set<DependencyEntry> dependencies = collectComponentDependencies(componentClasses, verbose);
+        copyDependencies(libDir, dependencies, verbose);
+        
+        // Build classpath with dependencies
         String classpath = buildClasspathWithDependencies(libDir);
         
-        // Copy logback.xml configuration to classes directory if needed
+        // Copy logback.xml configuration to classes directory
         Path logbackConfig = tempDir.resolve("classes/logback.xml");
         Files.createDirectories(logbackConfig.getParent());
         
@@ -590,7 +606,7 @@ public class FlowCompilerNG {
             "</configuration>";
         Files.write(logbackConfig, logbackConfigContent.getBytes());
         
-        // Compile the source code
+        // Compile source file
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
         StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, null, null);
@@ -601,15 +617,29 @@ public class FlowCompilerNG {
             .filter(path -> path.toString().endsWith(".java"))
             .forEach(path -> sourceFiles.add(path.toFile()));
         
+        if (verbose) {
+            log.info("Found {} source files to compile", sourceFiles.size());
+            for (File file : sourceFiles) {
+                log.info("  - {}", file.getName());
+            }
+        }
+        
         // Compile classes in the correct order - ensure interfaces come first
         Iterable<? extends JavaFileObject> compilationUnits = 
             fileManager.getJavaFileObjectsFromFiles(sourceFiles);
             
         // Add the current classpath to ensure all required classes are available during compilation
         List<String> options = Arrays.asList(
-            "-d", classesDir.toString(), 
+            "-d", classPath.toString(), 
             "-classpath", System.getProperty("java.class.path") + File.pathSeparator + classpath
         );
+        
+        if (verbose) {
+            log.info("Compilation options:");
+            for (String option : options) {
+                log.info("  - {}", option);
+            }
+        }
         
         JavaCompiler.CompilationTask task = compiler.getTask(
             null, fileManager, diagnostics, options, null, compilationUnits);
@@ -630,6 +660,18 @@ public class FlowCompilerNG {
             errorMsg.append("]");
             throw new CompilationException(errorMsg.toString());
         }
+        
+        if (verbose) {
+            log.info("Compilation successful");
+            log.info("Checking compiled class files:");
+            try {
+                Files.walk(classPath)
+                    .filter(Files::isRegularFile)
+                    .forEach(path -> log.info("  - {}", classPath.relativize(path)));
+            } catch (IOException e) {
+                log.warn("Error listing compiled files", e);
+            }
+        }
 
         // Create JAR with manifest
         Path jarPath = tempDir.resolve(className + ".jar");
@@ -639,13 +681,20 @@ public class FlowCompilerNG {
         manifest.getMainAttributes().put(new Attributes.Name("Flow-Class"), "io.webetl.generated." + className);
         manifest.getMainAttributes().put(new Attributes.Name("Created-By"), "WebETL Flow Compiler");
 
+        if (verbose) {
+            log.info("Creating JAR file: {}", jarPath);
+            log.info("Manifest entries:");
+            log.info("  - Main-Class: {}", "io.webetl.runtime.JarLauncher");
+            log.info("  - Flow-Class: {}", "io.webetl.generated." + className);
+        }
+
         try (JarOutputStream jos = new JarOutputStream(new FileOutputStream(jarPath.toFile()), manifest)) {
             // Add the compiled flow class
-            Files.walk(classesDir)
+            Files.walk(classPath)
                 .filter(Files::isRegularFile)
                 .forEach(path -> {
                     try {
-                        String entryName = classesDir.relativize(path).toString().replace('\\', '/');
+                        String entryName = classPath.relativize(path).toString().replace('\\', '/');
                         JarEntry entry = new JarEntry(entryName);
                         jos.putNextEntry(entry);
                         jos.write(Files.readAllBytes(path));
@@ -654,7 +703,7 @@ public class FlowCompilerNG {
                         throw new UncheckedIOException(e);
                     }
                 });
-                
+            
             // Add core component interfaces and implementations
             addClassesToJar(jos, 
                 "io.webetl.compiler.CompiledFlow",
@@ -665,14 +714,26 @@ public class FlowCompilerNG {
                 "io.webetl.model.component.OutputQueueProvider"
             );
             
+            // Add SLF4J packages
+            addPackageClassesToJar(jos, "org.slf4j", getClass().getClassLoader(), verbose);
+            addPackageClassesToJar(jos, "org.slf4j.helpers", getClass().getClassLoader(), verbose);
+            addPackageClassesToJar(jos, "org.slf4j.spi", getClass().getClassLoader(), verbose);
+            addPackageClassesToJar(jos, "org.slf4j.event", getClass().getClassLoader(), verbose);
+            
+            // Add component classes
+            for (Class<?> componentClass : componentClasses) {
+                addClass(jos, componentClass);
+            }
+            
             // Add the entire io.webetl.runtime package
             addPackageClassesToJar(jos, "io.webetl.runtime", getClass().getClassLoader(), verbose);
             
             // Add the entire io.webetl.model package and subpackages
             addPackageClassesToJar(jos, "io.webetl.model", getClass().getClassLoader(), verbose);
-           
+            
             // add the entire io.webetl.components package and subpackages
             addPackageClassesToJar(jos, "io.webetl.components", getClass().getClassLoader(), verbose);
+            
             // Add logback configuration to jar
             try {
                 JarEntry logbackEntry = new JarEntry("logback.xml");
@@ -784,55 +845,6 @@ public class FlowCompilerNG {
         }
     }
 
-    /**
-     * Finds the runtime JAR containing JarLauncher, JarClassLoader and FlowRunner classes
-     */
-    private Path findRuntimeJar() throws IOException {
-        URL jarLauncherUrl = JarLauncher.class.getResource("JarLauncher.class");
-        if (jarLauncherUrl == null) {
-            throw new IOException("Could not determine the location of JarLauncher class");
-        }
-        
-        String protocol = jarLauncherUrl.getProtocol();
-        if ("jar".equals(protocol)) {
-            // Extract jar file path from URL
-            String path = jarLauncherUrl.getPath();
-            String jarPath = path.substring(5, path.indexOf('!'));
-            
-            try {
-                // URL decode to handle spaces and special characters
-                String decodedPath = URLDecoder.decode(jarPath, StandardCharsets.UTF_8);
-                Path jarFile = Paths.get(new URI(decodedPath));
-                
-                if (Files.exists(jarFile)) {
-                    return jarFile;
-                }
-            } catch (Exception e) {
-                throw new IOException("Could not determine runtime JAR location from URL: " + jarPath, e);
-            }
-        } else if ("file".equals(protocol)) {
-            // In dev mode, the classes might not be in a JAR
-            // Create an in-memory JAR with essential runtime classes
-            try {
-                Path tempJar = Files.createTempFile("runtime", ".jar");
-                Files.deleteIfExists(tempJar);
-                
-                try (JarOutputStream jos = new JarOutputStream(new FileOutputStream(tempJar.toFile()))) {
-                    // Add essential runtime classes
-                    addClass(jos, JarLauncher.class);
-                    addClass(jos, JarClassLoader.class);
-                    addClass(jos, FlowRunner.class);
-                    addClass(jos, ExecutionContext.class);
-                }
-                
-                return tempJar;
-            } catch (Exception e) {
-                throw new IOException("Could not create temporary runtime JAR", e);
-            }
-        }
-        
-        throw new IOException("Could not locate runtime JAR");
-    }
 
     /**
      * Adds a class to a JAR file
@@ -924,116 +936,148 @@ public class FlowCompilerNG {
     }
 
     /**
-     * Copies required dependencies to the lib directory
+     * Collects dependencies from component classes
      */
-    private void copyDependencies(Path libDir, Path runtimeJar, boolean verbose) throws IOException {
-        // Copy runtime jar first - this is essential
-        Path destRuntimeJar = libDir.resolve("runtime.jar");
-        Files.copy(runtimeJar, destRuntimeJar, StandardCopyOption.REPLACE_EXISTING);
+    private Set<DependencyEntry> collectComponentDependencies(Set<Class<?>> componentClasses, boolean verbose) {
+        Set<DependencyEntry> dependencies = new HashSet<>();
+        
+        // Add core dependencies that are always required
+        dependencies.add(new DependencyEntry("org.slf4j", "slf4j-api", "1.7.36"));
+        dependencies.add(new DependencyEntry("ch.qos.logback", "logback-classic", "1.4.11"));
+        dependencies.add(new DependencyEntry("ch.qos.logback", "logback-core", "1.4.11"));
+        dependencies.add(new DependencyEntry("org.apache.commons", "commons-lang3", "3.12.0"));
+        dependencies.add(new DependencyEntry("com.fasterxml.jackson.core", "jackson-core", "2.15.2"));
+        dependencies.add(new DependencyEntry("com.fasterxml.jackson.core", "jackson-databind", "2.15.2"));
+        dependencies.add(new DependencyEntry("com.fasterxml.jackson.core", "jackson-annotations", "2.15.2"));
+        
+        
         if (verbose) {
-            System.out.println("Copied runtime.jar to lib directory");
+            System.out.println("Collecting dependencies from component classes...");
         }
         
-        // Define core dependencies we need - these are the only ones we'll include
-        String[][] coreDependencies = {
-            {"org.slf4j", "slf4j-api", "2.0.9"},
-            {"ch.qos.logback", "logback-classic", "1.4.11"},
-            {"ch.qos.logback", "logback-core", "1.4.11"},
-            {"org.apache.commons", "commons-lang3", "3.12.0"},
-            {"com.google.guava", "guava", "31.1-jre"},
-            {"com.fasterxml.jackson.core", "jackson-core", "2.15.2"},
-            {"com.fasterxml.jackson.core", "jackson-databind", "2.15.2"},
-            {"com.fasterxml.jackson.core", "jackson-annotations", "2.15.2"},
-            // Add database drivers
-            //TODO: make this dynamic based on components and their dependencies
-            {"org.postgresql", "postgresql", "42.6.0"},
-            {"com.mysql", "mysql-connector-j", "8.0.33"}
-        };
+        System.out.println("Component classes size: " + componentClasses.size());
+        for (Class<?> componentClass : componentClasses) {
+            System.out.println("Processing class: " + componentClass.getName());
+            ComponentDependencies annotation = componentClass.getAnnotation(ComponentDependencies.class);
+            System.out.println("Found annotation: " + annotation);
+            
+            if (annotation != null) {
+                if (verbose) {
+                    System.out.println("Found dependencies for component " + componentClass.getName());
+                }
+                
+                for (Dependency dependency : annotation.value()) {
+                    DependencyEntry entry = DependencyEntry.fromAnnotation(dependency);
+                    dependencies.add(entry);
+                    
+                    if (verbose) {
+                        System.out.println("  - " + entry);
+                    }
+                }
+            } else if (verbose) {
+                System.out.println("No dependencies found for component " + componentClass.getName());
+            }
+        }
+        
+        return dependencies;
+    }
+
+    /**
+     * Copies required dependencies to the lib directory
+     */
+    private void copyDependencies(Path libDir, Set<DependencyEntry> dependencies, boolean verbose) throws IOException {
         
         // Create a set of JAR name patterns to look for
         Set<String> dependencyPatterns = new HashSet<>();
-        for (String[] dep : coreDependencies) {
-            // Create patterns like "slf4j-api-2.0.9", "guava-31.1-jre", etc.
-            String pattern = dep[1] + "-" + dep[2];
-            dependencyPatterns.add(pattern);
+        
+        for (DependencyEntry dep : dependencies) {
+            dependencyPatterns.add(dep.getPattern());
         }
-        
-        // Add more generic patterns for database drivers
-        //TODO: recheck this
-        dependencyPatterns.add("postgresql");
-        dependencyPatterns.add("mysql-connector");
-        
-        // Also include any io.webetl jars that aren't the main application
-        dependencyPatterns.add("webetl-model");
-        dependencyPatterns.add("webetl-common");
-        dependencyPatterns.add("webetl-api");
-        dependencyPatterns.add("webetl-data");
         
         if (verbose) {
             System.out.println("Looking for these dependency patterns: " + dependencyPatterns);
         }
         
-        // Find matching JARs from classpath
-        String classpath = System.getProperty("java.class.path");
-        String[] classpathEntries = classpath.split(File.pathSeparator);
+        // Find dependencies that match the patterns
+        Set<DependencyEntry> missingDependencies = new HashSet<>(dependencies);
         
-        if (verbose) {
-            System.out.println("Scanning classpath for specific dependency JARs...");
-        }
-        
-        // Copy only the JARs that match our dependency patterns
-        for (String entry : classpathEntries) {
-            if (entry.endsWith(".jar")) {
-                Path jarPath = Paths.get(entry);
-                if (Files.exists(jarPath)) {
+        // Check local Maven repository first
+        Path m2Dir = Paths.get(System.getProperty("user.home"), ".m2", "repository");
+        if (Files.exists(m2Dir)) {
+            try (Stream<Path> walk = Files.walk(m2Dir)) {
+                List<Path> jarFiles = walk
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".jar"))
+                    .collect(Collectors.toList());
+
+                for (Path jarPath : jarFiles) {
                     String jarName = jarPath.getFileName().toString();
                     
-                    // Skip the main application JARs
-                    if (shouldSkipJar(jarName)) {
-                        if (verbose) {
-                            System.out.println("Skipping JAR: " + jarName);
-                        }
-                        continue;
-                    }
+                    // Check if this JAR matches any of our dependency patterns
+                    boolean isMatch = false;
+                    DependencyEntry matchedDep = null;
                     
-                    // Check if this JAR matches one of our dependency patterns
-                    boolean shouldInclude = false;
-                    for (String pattern : dependencyPatterns) {
-                        if (jarName.contains(pattern)) {
-                            shouldInclude = true;
+                    for (DependencyEntry dep : dependencies) {
+                        if (jarName.matches(dep.getPattern())) {
+                            isMatch = true;
+                            matchedDep = dep;
+                            missingDependencies.remove(dep);
                             break;
                         }
                     }
                     
-                    // Also include jars that contain essential runtime classes
-                    if (!shouldInclude && isEssentialRuntimeJar(jarPath, verbose)) {
-                        shouldInclude = true;
-                    }
-                    
-                    if (shouldInclude) {
-                        try {
-                            Path destPath = libDir.resolve(jarName);
-                            Files.copy(jarPath, destPath, StandardCopyOption.REPLACE_EXISTING);
-                            
-                            if (verbose) {
-                                System.out.println("Copied dependency JAR: " + jarName);
-                            }
-                        } catch (IOException e) {
-                            System.out.println("Warning: Failed to copy dependency: " + jarName + " - " + e.getMessage());
+                    // For all dependencies, just copy the JAR
+                    if (isMatch) {
+                        Path destPath = libDir.resolve(jarName);
+                        Files.copy(jarPath, destPath, StandardCopyOption.REPLACE_EXISTING);
+                        
+                        if (verbose) {
+                            System.out.println("Copied dependency: " + jarPath + " to " + destPath);
                         }
-                    } else if (verbose) {
-                        System.out.println("Skipping non-essential JAR: " + jarName);
                     }
                 }
             }
         }
         
-        if (verbose) {
-            System.out.println("Dependency copying complete");
+        // Download any missing dependencies
+        if (!missingDependencies.isEmpty()) {
+            downloadMissingDependencies(libDir, missingDependencies, verbose);
         }
-        
     }
-    
+
+    /**
+     * Downloads missing dependencies from Maven Central
+     */
+    private void downloadMissingDependencies(Path libDir, Set<DependencyEntry> dependencies, boolean verbose) {
+        for (DependencyEntry dependency : dependencies) {
+            Path jarPath = libDir.resolve(dependency.getJarFilename());
+            
+            if (!Files.exists(jarPath)) {
+                if (verbose) {
+                    System.out.println("Dependency not found in classpath: " + dependency);
+                    System.out.println("Attempting to download from Maven Central...");
+                }
+                
+                try {
+                    // Try to download from Maven Central
+                    URL url = new URL("https://repo1.maven.org/maven2/" + dependency.getMavenPath());
+                    try (InputStream is = url.openStream()) {
+                        Files.copy(is, jarPath, StandardCopyOption.REPLACE_EXISTING);
+                        if (verbose) {
+                            System.out.println("Downloaded dependency: " + dependency);
+                        }
+                    }
+                } catch (IOException e) {
+                    if (dependency.isOptional()) {
+                        log.warn("Optional dependency not found: " + dependency + " - " + e.getMessage());
+                    } else {
+                        log.error("Failed to download dependency: " + dependency + " - " + e.getMessage());
+                    }
+                }
+            }
+        }
+    }
+
     /**
      * Checks if a JAR contains essential runtime classes that we need.
      */
@@ -1045,11 +1089,6 @@ public class FlowCompilerNG {
             "io.webetl.runtime.ExecutionContext"
         };
         
-        // Database driver classes we need
-        String[] databaseDrivers = {
-            "org.postgresql.Driver",
-            "com.mysql.cj.jdbc.Driver"
-        };
         
         try (JarFile jarFile = new JarFile(jarPath.toFile())) {
             Enumeration<JarEntry> entries = jarFile.entries();
@@ -1072,15 +1111,6 @@ public class FlowCompilerNG {
                         }
                     }
                     
-                    // Check for database drivers
-                    for (String driver : databaseDrivers) {
-                        if (className.equals(driver)) {
-                            if (verbose) {
-                                System.out.println("JAR contains database driver: " + className);
-                            }
-                            return true;
-                        }
-                    }
                 }
             }
         } catch (IOException e) {
@@ -1256,5 +1286,84 @@ public class FlowCompilerNG {
         }
         
         return classpath.toString();
+    }
+
+    /**
+     * Extracts component classes from the sheet
+     */
+    private Set<Class<?>> extractComponentClasses(Sheet sheet, boolean verbose) {
+        Set<Class<?>> componentClasses = new HashSet<>();
+        
+        if (verbose) {
+            System.out.println("Extracting component classes from sheet...");
+        }
+        
+        for (Map<String, Object> node : sheet.getNodes()) {
+            String nodeId = node.containsKey("id") ? (String) node.get("id") : "unknown";
+            System.out.println("Processing node: " + nodeId + " of type: " + node.get("type"));
+            
+            // Skip nodes that don't have data
+            if (!node.containsKey("data")) {
+                System.out.println("Node doesn't have data: " + node);
+                continue;
+            }
+            
+            Object dataObj = node.get("data");
+            if (!(dataObj instanceof Map)) {
+                System.out.println("Node data is not a map: " + dataObj);
+                continue;
+            }
+            
+            Map<String, Object> data = (Map<String, Object>) dataObj;
+            
+            // Print entire data structure for debugging
+            System.out.println("Node data structure: " + data);
+            
+            // Check various possible paths to find the implementation class
+            String implementationClass = null;
+            
+            // Try path: data.component.implementation
+            if (data.containsKey("component") && data.get("component") instanceof Map) {
+                Map<String, Object> component = (Map<String, Object>) data.get("component");
+                if (component.containsKey("implementation")) {
+                    implementationClass = (String) component.get("implementation");
+                }
+            }
+            
+            // Try path: data.componentData.implementationClass
+            if (implementationClass == null && data.containsKey("componentData") && data.get("componentData") instanceof Map) {
+                Map<String, Object> componentData = (Map<String, Object>) data.get("componentData");
+                if (componentData.containsKey("implementationClass")) {
+                    implementationClass = (String) componentData.get("implementationClass");
+                }
+            }
+            
+            if (implementationClass == null) {
+                System.out.println("Could not find implementation class in node: " + nodeId);
+                continue;
+            }
+            
+            System.out.println("Found implementation class: " + implementationClass + " for node " + nodeId);
+            
+            try {
+                Class<?> componentClass = Class.forName(implementationClass);
+                componentClasses.add(componentClass);
+                
+                // Print annotations on the class for debugging
+                System.out.println("Annotations on class " + componentClass.getName() + ":");
+                for (Annotation annotation : componentClass.getAnnotations()) {
+                    System.out.println("  - " + annotation);
+                }
+                
+                if (verbose) {
+                    System.out.println("Added component class: " + implementationClass + " to the set");
+                }
+            } catch (ClassNotFoundException e) {
+                log.warn("Component class not found: " + implementationClass, e);
+            }
+        }
+        
+        System.out.println("Extracted " + componentClasses.size() + " component classes");
+        return componentClasses;
     }
 } 

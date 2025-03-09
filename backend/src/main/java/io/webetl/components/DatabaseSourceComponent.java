@@ -8,6 +8,8 @@ import io.webetl.model.component.parameter.SecretParameter;
 import io.webetl.model.component.parameter.SQLParameter;
 import io.webetl.model.data.Row;
 import io.webetl.runtime.ExecutionContext;
+import io.webetl.compiler.ComponentDependencies;
+import io.webetl.compiler.Dependency;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -29,6 +31,10 @@ import java.util.UUID;
     icon = "DatabaseIcon",
     backgroundColor = "#e3f2fd"
 )
+@ComponentDependencies({
+    @Dependency(groupId = "org.postgresql", artifactId = "postgresql", version = "42.6.0"),
+    @Dependency(groupId = "com.mysql", artifactId = "mysql-connector-j", version = "8.0.33")
+})
 public class DatabaseSourceComponent extends SourceComponent {
     
     // Constants for database drivers and URL templates
@@ -40,14 +46,20 @@ public class DatabaseSourceComponent extends SourceComponent {
     
     public DatabaseSourceComponent() {
         // Add database type parameter (dropdown)
-        getParameters().add(SelectParameter.builder()
+        SelectParameter dbTypeParam = SelectParameter.builder()
             .name("dbType")
             .label("Database Type")
             .description("Select the type of database to connect to")
-            .options(Arrays.asList("PostgreSQL", "MySQL"))
-            .defaultValue("PostgreSQL")
+            .options(Arrays.asList("postgresql", "mysql"))
+            .defaultValue("postgresql")
             .required(true)
-            .build());
+            .build();
+        
+        // Set display names for the options
+        dbTypeParam.setDisplayName("Database Engine");
+        dbTypeParam.setOptionDisplayName("postgresql", "PostgreSQL");
+        dbTypeParam.setOptionDisplayName("mysql", "MySQL");
+        getParameters().add(dbTypeParam);
             
         // Add host parameter
         getParameters().add(StringParameter.builder()
@@ -119,8 +131,8 @@ public class DatabaseSourceComponent extends SourceComponent {
         
         // Set default values if parameters are null or empty
         if (dbType == null || dbType.isEmpty()) {
-            dbType = "PostgreSQL";
-            info(context, "Using default database type: PostgreSQL");
+            dbType = "postgresql";
+            info(context, "Using default database type: postgresql");
         }
         
         if (host == null || host.isEmpty()) {
@@ -135,7 +147,7 @@ public class DatabaseSourceComponent extends SourceComponent {
         
         // Default ports if not specified
         if (port == null || port.isEmpty()) {
-            port = "PostgreSQL".equals(dbType) ? "5432" : "3306";
+            port = "postgresql".equals(dbType) ? "5432" : "3306";
             info(context, "Using default port: " + port);
         }
         
@@ -240,30 +252,54 @@ public class DatabaseSourceComponent extends SourceComponent {
     private String buildConnectionString(String dbType, String host, String port, String database) {
         // Use a default value if dbType is null
         if (dbType == null) {
-            dbType = "PostgreSQL";
+            dbType = "postgresql";
         }
         
-        String template = "PostgreSQL".equals(dbType) ? POSTGRES_URL_TEMPLATE : MYSQL_URL_TEMPLATE;
+        String template = "postgresql".equals(dbType) ? POSTGRES_URL_TEMPLATE : MYSQL_URL_TEMPLATE;
         
         // Provide defaults for any null values
         host = (host != null) ? host : "localhost";
-        port = (port != null) ? port : ("PostgreSQL".equals(dbType) ? "5432" : "3306");
-        database = (database != null) ? database : ("PostgreSQL".equals(dbType) ? "postgres" : "mysql");
+        port = (port != null) ? port : ("postgresql".equals(dbType) ? "5432" : "3306");
+        database = (database != null) ? database : ("postgresql".equals(dbType) ? "postgres" : "mysql");
         
         return String.format(template, host, port, database);
     }
     
     /**
-     * Load the appropriate database driver
+     * Loads the appropriate JDBC driver based on database type
      */
     private void loadDatabaseDriver(String dbType) throws ClassNotFoundException {
-        // Use a default value if dbType is null
-        if (dbType == null) {
-            dbType = "PostgreSQL";
+        String driverClass = null;
+        
+        if ("postgresql".equals(dbType)) {
+            driverClass = POSTGRES_DRIVER;
+        } else if ("mysql".equals(dbType)) {
+            driverClass = MYSQL_DRIVER;
+        } else {
+            throw new IllegalArgumentException("Unsupported database type: " + dbType);
         }
         
-        String driverClass = "PostgreSQL".equals(dbType) ? POSTGRES_DRIVER : MYSQL_DRIVER;
-        Class.forName(driverClass);
+        try {
+            // First try using the context class loader, which might be our JarClassLoader
+            ClassLoader contextLoader = Thread.currentThread().getContextClassLoader();
+            if (contextLoader != null) {
+                try {
+                    Class.forName(driverClass, true, contextLoader);
+                    log.info("Successfully loaded {} driver using context class loader", dbType);
+                    return;
+                } catch (ClassNotFoundException e) {
+                    log.debug("Driver not found in context class loader, will try default loader: {}", e.getMessage());
+                    // Fall through to try the default loader
+                }
+            }
+            
+            // Try with the default class loader
+            Class.forName(driverClass);
+            log.info("Successfully loaded {} driver using default class loader", dbType);
+        } catch (ClassNotFoundException e) {
+            log.error("Database driver not found: {}: {}", driverClass, e.getMessage());
+            throw e;
+        }
     }
     
     /**

@@ -3,10 +3,15 @@ package io.webetl.model.component;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.webetl.model.component.parameter.Parameter;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.HashMap;
 import lombok.Data;
 import io.webetl.runtime.ExecutionContext;
@@ -41,6 +46,9 @@ public abstract class ETLComponent implements ExecutableComponent {
     // Default constructor for Jackson
     public ETLComponent() {
     }
+
+    @JsonIgnore
+    protected final Logger log = LoggerFactory.getLogger(this.getClass());
 
     public ETLComponent(String id, String label, String description, String icon, String backgroundColor, List<Parameter<?>> parameters) {
         this.id = id;

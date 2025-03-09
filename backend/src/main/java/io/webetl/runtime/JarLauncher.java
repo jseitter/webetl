@@ -8,6 +8,7 @@ import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 
@@ -48,6 +49,7 @@ public class JarLauncher {
      * @param args command line arguments - first argument must be path to the flow jar
      */
     public static void main(String[] args) {
+        log("INFO", "WebETL flow standalone jar starting");
         // Check for verbose flag
         for (String arg : args) {
             if (arg.equals("--verbose") || arg.equals("-v")) {
@@ -146,33 +148,87 @@ public class JarLauncher {
      * @throws Exception if anything goes wrong
      */
     private static void runWithFlowClass(Path jarPath, String flowClassName) throws Exception {
+        log("INFO", "Running with flow class: " + flowClassName);
         // Create a new class loader for the jar and its dependencies
-        try (JarClassLoader loader = new JarClassLoader(JarLauncher.class.getClassLoader())) {
+        log("INFO", "Creating new class loader");
+        JarClassLoader loader = new JarClassLoader(ClassLoader.getSystemClassLoader());  // Use system classloader as parent for JRE access
+        
+        try {
             // Enable verbose mode if requested
             loader.setVerbose(verbose);
+            
+            // Set the context class loader before loading any classes
+            Thread.currentThread().setContextClassLoader(loader);
+            debug("Set thread context classloader to JarClassLoader");
             
             // Load the jar
             info("Loading JAR and dependencies");
             loader.loadJar(jarPath);
             
-            // Set the context class loader
-            Thread.currentThread().setContextClassLoader(loader);
+            // Print the classpath for debugging
+            if (verbose) {
+                loader.printClasspath();
+            }
             
-            // Create an execution context
-            ExecutionContext context = new ExecutionContext();
+            // Pre-load SLF4J classes from parent classloader to avoid conflicts
+            try {
+                Class.forName("org.slf4j.LoggerFactory", true, ClassLoader.getSystemClassLoader());
+                debug("Pre-loaded SLF4J LoggerFactory from system classloader");
+            } catch (ClassNotFoundException e) {
+                warn("Could not pre-load SLF4J LoggerFactory: " + e.getMessage());
+            }
             
             // Load and invoke the flow class
             debug("Loading flow class: " + flowClassName);
             Class<?> flowClass = loader.loadClass(flowClassName);
+            debug("Successfully loaded flow class");
+            
+            // Print class information for debugging
+            debug("Class name: " + flowClass.getName());
+            debug("Class loader: " + flowClass.getClassLoader().getClass().getName());
+            debug("Superclass: " + flowClass.getSuperclass().getName());
+            debug("Interfaces: " + Arrays.toString(flowClass.getInterfaces()));
+            
+            // Print all methods for debugging
+            debug("Available methods:");
+            for (Method m : flowClass.getMethods()) {
+                debug("  " + m.getName() + "(" + Arrays.toString(m.getParameterTypes()) + ")");
+            }
+            
             info("Instantiating flow class");
             Object flowInstance = flowClass.getDeclaredConstructor().newInstance();
+            debug("Successfully instantiated flow class");
             
-            // Find and invoke the execute method
-            Method executeMethod = flowClass.getMethod("execute", ExecutionContext.class);
+            // Find and invoke the execute method using reflection with class name matching
+            debug("Looking for execute method with parameter type: " + ExecutionContext.class.getName());
+            
+            // Find the execute method by name and parameter type name
+            Method executeMethod = null;
+            for (Method method : flowClass.getMethods()) {
+                if ("execute".equals(method.getName()) && 
+                    method.getParameterCount() == 1 && 
+                    "io.webetl.runtime.ExecutionContext".equals(method.getParameterTypes()[0].getName())) {
+                    executeMethod = method;
+                    debug("Found execute method: " + executeMethod);
+                    break;
+                }
+            }
+            
+            if (executeMethod == null) {
+                throw new NoSuchMethodException(flowClassName + ".execute(io.webetl.runtime.ExecutionContext)");
+            }
+            
+            // Create an ExecutionContext using the same classloader that loaded the flow class
+            debug("Creating ExecutionContext using flow class's classloader");
+            Class<?> contextClass = loader.loadClass("io.webetl.runtime.ExecutionContext");
+            Object context = contextClass.getDeclaredConstructor().newInstance();
+            debug("Successfully created ExecutionContext instance");
             
             info("Executing flow class: " + flowClassName);
             executeMethod.invoke(flowInstance, context);
             info("Flow execution completed successfully");
+        } finally {
+            loader.close();
         }
     }
     
@@ -251,11 +307,24 @@ public class JarLauncher {
             ExecutionContext context = new ExecutionContext();
             
             // Find and invoke the execute method
-            Method executeMethod = flowClass.getMethod("execute", ExecutionContext.class);
+            Method[] methods = flowClass.getMethods();
+            Method executeMethod = null;
+            for (Method method : methods) {
+                if ("execute".equals(method.getName()) && 
+                    method.getParameterCount() == 1 && 
+                    "io.webetl.runtime.ExecutionContext".equals(method.getParameterTypes()[0].getName())) {
+                    executeMethod = method;
+                    break;
+                }
+            }
             
-            info("Executing flow class: " + flowClassName);
-            executeMethod.invoke(flowInstance, context);
-            info("Flow execution completed successfully");
+            if (executeMethod != null) {
+                info("Executing flow class: " + flowClassName);
+                executeMethod.invoke(flowInstance, context);
+                info("Flow execution completed successfully");
+            } else {
+                throw new NoSuchMethodException("execute(io.webetl.runtime.ExecutionContext)");
+            }
         }
     }
     

@@ -120,27 +120,165 @@ public class JarClassLoader extends URLClassLoader {
     }
     
     /**
-     * Override to log class loading attempts if verbose is enabled
+     * Override to change the class loading order - try our classloader first, then parent
      */
     @Override
-    protected Class<?> findClass(String name) throws ClassNotFoundException {
-        if (verbose) {
-            log("Finding class: " + name);
+    public Class<?> loadClass(String name) throws ClassNotFoundException {
+        // First check if the class has already been loaded
+        Class<?> loadedClass = findLoadedClass(name);
+        if (loadedClass != null) {
+            return loadedClass;
         }
+
+        // First try to find the class in our classloader
         try {
-            Class<?> c = super.findClass(name);
             if (verbose) {
-                log("Found class: " + name + " from " + c.getProtectionDomain().getCodeSource().getLocation());
+                log("Attempting to load from our classloader: " + name);
             }
-            return c;
-        } catch (ClassNotFoundException e) {
+            // Use findLoadedClass to check if we've already loaded this class
+            Class<?> c = findLoadedClass(name);
+            if (c != null) {
+                if (verbose) {
+                    log("Found already loaded class in our classloader: " + name);
+                }
+                return c;
+            }
+
+            // Try to find the class in our JARs
+            String classPath = name.replace('.', '/') + ".class";
+            for (URL url : getURLs()) {
+                if (url.getProtocol().equals("file")) {
+                    try {
+                        JarFile jarFile = new JarFile(new File(url.toURI()));
+                        JarEntry entry = jarFile.getJarEntry(classPath);
+                        if (entry != null) {
+                            if (verbose) {
+                                log("Found class file in JAR: " + url);
+                            }
+                            // Load the class from the JAR
+                            try (InputStream is = jarFile.getInputStream(entry)) {
+                                byte[] classData = is.readAllBytes();
+                                c = defineClass(name, classData, 0, classData.length);
+                                if (verbose) {
+                                    log("Successfully defined class: " + name + " from " + url);
+                                }
+                                return c;
+                            }
+                        }
+                        jarFile.close();
+                    } catch (Exception e) {
+                        if (verbose) {
+                            log("Error checking JAR " + url + ": " + e.getMessage());
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
             if (verbose) {
-                log("Class not found: " + name);
+                log("Error loading from our classloader: " + e.getMessage());
             }
-            throw e;
         }
+
+        // If we get here, try the parent classloader
+        ClassLoader parent = getParent();
+        if (parent != null) {
+            try {
+                if (verbose) {
+                    log("Attempting to load from parent classloader: " + name);
+                    log("Parent classloader: " + parent.getClass().getName());
+                }
+                Class<?> c = parent.loadClass(name);
+                if (verbose) {
+                    // Safely get the class location
+                    String location = "unknown";
+                    try {
+                        if (c.getProtectionDomain() != null && 
+                            c.getProtectionDomain().getCodeSource() != null && 
+                            c.getProtectionDomain().getCodeSource().getLocation() != null) {
+                            location = c.getProtectionDomain().getCodeSource().getLocation().toString();
+                        }
+                    } catch (Exception e) {
+                        // Ignore any errors getting the location
+                    }
+                    log("Found class in parent classloader: " + name + " from " + location);
+                }
+                return c;
+            } catch (ClassNotFoundException e) {
+                if (verbose) {
+                    log("Class not found in parent classloader: " + name);
+                }
+            }
+        }
+
+        // If we get here, the class wasn't found anywhere
+        if (verbose) {
+            log("Class not found in any classloader: " + name);
+            // Print the classpath for debugging
+            log("Current classpath:");
+            for (URL url : getURLs()) {
+                log("  - " + url);
+            }
+            // Try to find the class file in the JARs
+            log("Searching for class file in JARs:");
+            for (URL url : getURLs()) {
+                if (url.getProtocol().equals("file")) {
+                    try {
+                        JarFile jarFile = new JarFile(new File(url.toURI()));
+                        String classPath = name.replace('.', '/') + ".class";
+                        if (jarFile.getEntry(classPath) != null) {
+                            log("  Found in JAR: " + url);
+                        }
+                        jarFile.close();
+                    } catch (Exception ex) {
+                        log("  Error checking JAR " + url + ": " + ex.getMessage());
+                    }
+                }
+            }
+        }
+        throw new ClassNotFoundException(name);
     }
-    
+
+    /**
+     * Override to log resource loading attempts
+     */
+    @Override
+    public URL findResource(String name) {
+        if (verbose) {
+            log("Finding resource: " + name);
+        }
+        URL url = super.findResource(name);
+        if (verbose) {
+            if (url != null) {
+                log("Found resource: " + name + " at " + url);
+            } else {
+                log("Resource not found: " + name);
+            }
+        }
+        return url;
+    }
+
+    /**
+     * Override to log resource loading attempts
+     */
+    @Override
+    public Enumeration<URL> findResources(String name) throws IOException {
+        if (verbose) {
+            log("Finding resources: " + name);
+        }
+        Enumeration<URL> urls = super.findResources(name);
+        if (verbose) {
+            if (urls.hasMoreElements()) {
+                log("Found resources: " + name);
+                while (urls.hasMoreElements()) {
+                    log("  - " + urls.nextElement());
+                }
+            } else {
+                log("No resources found: " + name);
+            }
+        }
+        return urls;
+    }
+
     /**
      * Simple logging method for the class loader
      */
@@ -157,5 +295,16 @@ public class JarClassLoader extends URLClassLoader {
     public void close() throws IOException {
         super.close();
         // Additional cleanup can be added here if needed
+    }
+
+    /**
+     * Prints the classpath of this JarClassLoader.
+     * This is useful for debugging class loading issues.
+     */
+    public void printClasspath() {
+        log("JarClassLoader classpath:");
+        for (URL url : getURLs()) {
+            log("  - " + url.toString());
+        }
     }
 } 

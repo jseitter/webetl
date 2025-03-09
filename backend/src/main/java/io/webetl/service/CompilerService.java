@@ -13,8 +13,9 @@ import java.util.Map;
 
 import io.webetl.compiler.CompilationException;
 import io.webetl.compiler.FlowCompilerCLI;
-
+import lombok.extern.slf4j.Slf4j;
 @Service
+@Slf4j
 public class CompilerService {
     private final Path dataDirectory;
     private final SimpMessagingTemplate messagingTemplate;
@@ -28,6 +29,10 @@ public class CompilerService {
         this.dataDirectory = dataDirectory;
         this.messagingTemplate = messagingTemplate;
         this.useNewCompiler = useNewCompiler;
+        log.info("Using new compiler: {}", useNewCompiler);
+        log.info("Data directory: {}", dataDirectory);
+        log.info("Messaging template: {}", messagingTemplate);
+        log.info("Compiler service initialized");
     }
 
     public CompletableFuture<Void> compileSheet(String projectId, String sheetId) {
@@ -36,6 +41,7 @@ public class CompilerService {
                 Path projectDir = dataDirectory.resolve("projects").resolve(projectId);
                 Path compiledDir = projectDir.resolve("compiled");
                 compiledDir.toFile().mkdirs();
+                log.info("Compiled directory: {}", compiledDir);
 
                 // Create a sequence counter for this compilation session
                 AtomicInteger sequenceCounter = new AtomicInteger(0);
@@ -47,6 +53,7 @@ public class CompilerService {
                 System.setOut(ps);
 
                 try {
+                    log.info("Compiling sheet: {}", sheetId);
                     // Call compiler directly
                     FlowCompilerCLI.compileSheet(
                         projectDir.resolve("sheets").resolve(sheetId + ".json").toString(),
@@ -54,7 +61,7 @@ public class CompilerService {
                         true,
                         useNewCompiler
                     );
-                    
+                    log.info("Compilation completed successfully");
                     // Send captured output with sequence numbers
                     String output = baos.toString();
                     for (String line : output.split("\\R")) {

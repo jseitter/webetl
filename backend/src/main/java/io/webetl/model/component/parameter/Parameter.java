@@ -40,6 +40,9 @@ public abstract class Parameter<T> {
     @JsonProperty("value")
     private T value;
     
+    @JsonProperty("displayName")
+    private String displayName;
+    
     protected Parameter() {}
 
     protected Parameter(String name, String label, String description, boolean required) {
@@ -64,4 +67,10 @@ public abstract class Parameter<T> {
 
     public T getValue() { return value; }
     public void setValue(T value) { this.value = value; }
+    
+    public T getDefaultValue() { return defaultValue; }
+    public void setDefaultValue(T defaultValue) { this.defaultValue = defaultValue; }
+    
+    public String getDisplayName() { return displayName != null ? displayName : label; }
+    public void setDisplayName(String displayName) { this.displayName = displayName; }
 } 

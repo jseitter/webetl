@@ -40,29 +40,87 @@ function ParameterDialog({ open, onClose, node, onSave }) {
   const renderParameter = (param) => {
     console.log(`Rendering parameter ${param.name}, type: ${param.parameterType}, maxLength: ${param.maxLength}`);
     
+    // Use displayName if available, otherwise fall back to label
+    const displayLabel = param.displayName || param.label;
+    
     switch (param.parameterType) {
       case 'string':
         return (
           <TextField
             key={param.name}
             fullWidth
-            label={param.label}
+            label={displayLabel}
             value={values[param.name] || ''}
             onChange={(e) => handleChange(param.name, e.target.value)}
+            margin="normal"
+            helperText={param.description}
+            required={param.required}
+            inputProps={{ maxLength: param.maxLength }}
+          />
+        );
+      case 'number':
+        return (
+          <TextField
+            key={param.name}
+            fullWidth
+            label={displayLabel}
+            type="number"
+            value={values[param.name] || ''}
+            onChange={(e) => handleChange(param.name, e.target.value)}
+            margin="normal"
             helperText={param.description}
             required={param.required}
             inputProps={{ maxLength: param.maxLength && param.maxLength > 0 ? param.maxLength : 255 }}
           />
+        );
+      case 'boolean':
+        return (
+          <FormControl key={param.name} fullWidth margin="normal">
+            <InputLabel>{displayLabel}</InputLabel>
+            <Select
+              value={values[param.name] || false}
+              onChange={(e) => handleChange(param.name, e.target.value)}
+              label={displayLabel}
+            >
+              <MenuItem value={true}>Yes</MenuItem>
+              <MenuItem value={false}>No</MenuItem>
+            </Select>
+            <FormHelperText>{param.description}</FormHelperText>
+          </FormControl>
+        );
+      case 'select':
+        return (
+          <FormControl key={param.name} fullWidth margin="normal">
+            <InputLabel>{displayLabel}</InputLabel>
+            <Select
+              value={values[param.name] || ''}
+              onChange={(e) => handleChange(param.name, e.target.value)}
+              label={displayLabel}
+            >
+              {param.options.map(option => {
+                // Use option display name if available
+                const optionDisplayName = param.optionDisplayNames && param.optionDisplayNames[option] 
+                  ? param.optionDisplayNames[option] 
+                  : option;
+                  
+                return (
+                  <MenuItem key={option} value={option}>{optionDisplayName}</MenuItem>
+                );
+              })}
+            </Select>
+            <FormHelperText>{param.description}</FormHelperText>
+          </FormControl>
         );
       case 'secret':
         return (
           <TextField
             key={param.name}
             fullWidth
+            label={displayLabel}
             type="password"
-            label={param.label}
             value={values[param.name] || ''}
             onChange={(e) => handleChange(param.name, e.target.value)}
+            margin="normal"
             helperText={param.description}
             required={param.required}
           />
@@ -74,33 +132,27 @@ function ParameterDialog({ open, onClose, node, onSave }) {
             fullWidth
             multiline
             rows={4}
-            label={param.label}
+            label={displayLabel}
             value={values[param.name] || ''}
             onChange={(e) => handleChange(param.name, e.target.value)}
+            margin="normal"
             helperText={param.description}
             required={param.required}
           />
         );
-      case 'select':
-        return (
-          <FormControl key={param.name} fullWidth required={param.required}>
-            <InputLabel>{param.label}</InputLabel>
-            <Select
-              value={values[param.name] || ''}
-              onChange={(e) => handleChange(param.name, e.target.value)}
-              label={param.label}
-            >
-              {param.options?.map((option) => (
-                <MenuItem key={option} value={option}>{option}</MenuItem>
-              ))}
-            </Select>
-            {param.description && <FormHelperText>{param.description}</FormHelperText>}
-          </FormControl>
-        );
-      // Add other parameter types as needed
       default:
-        console.warn(`Unknown parameter type: ${param.parameterType}`);
-        return null;
+        return (
+          <TextField
+            key={param.name}
+            fullWidth
+            label={displayLabel}
+            value={values[param.name] || ''}
+            onChange={(e) => handleChange(param.name, e.target.value)}
+            margin="normal"
+            helperText={param.description}
+            required={param.required}
+          />
+        );
     }
   };
 

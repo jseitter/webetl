@@ -264,11 +264,7 @@ function Sheet({ sheet, onUpdate }) {
         </ReactFlow>
       </Box>
       {!isExecuting && (
-        <Palette 
-          isExecuting={isExecuting}
-          onExecute={handleExecute}
-          onStop={handleStop}
-        />
+        <Palette />
       )}
     </Box>
   );
