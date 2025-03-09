@@ -6,7 +6,6 @@ import {
 import { Send, Chat, Close, Add } from '@mui/icons-material';
 
 function ChatBot({ open, onClose, onFlowSuggestion, currentSheet }) {
-    const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const messagesEndRef = useRef(null);
@@ -18,6 +17,13 @@ function ChatBot({ open, onClose, onFlowSuggestion, currentSheet }) {
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
+
+    useEffect(() => {
+        console.log("ChatBot received open prop:", open);
+        if (open) {
+            scrollToBottom();
+        }
+    }, [open]);
 
     const handleSend = async () => {
         if (!input.trim()) return;
@@ -38,25 +44,18 @@ function ChatBot({ open, onClose, onFlowSuggestion, currentSheet }) {
             const data = await response.json();
             
             setMessages(prev => [...prev, { 
-                type: 'bot', 
+                type: 'assistant', 
                 text: data.content,
-                flowSuggestion: data.flowSuggestion 
+                flowSuggestion: data.flowSuggestion
             }]);
-
-            if (data.flowSuggestion) {
-                setMessages(prev => [...prev, {
-                    type: 'bot',
-                    text: 'Would you like me to apply these changes to your flow?',
-                    action: {
-                        label: 'Apply Changes',
-                        onClick: () => onFlowSuggestion(data.flowSuggestion)
-                    }
-                }]);
+            
+            if (data.flowSuggestion && onFlowSuggestion) {
+                onFlowSuggestion(data.flowSuggestion);
             }
         } catch (error) {
-            console.error('Chat error:', error);
+            console.error('Error sending message:', error);
             setMessages(prev => [...prev, { 
-                type: 'bot', 
+                type: 'assistant', 
                 text: 'Sorry, there was an error processing your request.' 
             }]);
         }
@@ -64,15 +63,30 @@ function ChatBot({ open, onClose, onFlowSuggestion, currentSheet }) {
 
     return (
         <>
-            <Fab 
-                color="primary" 
-                sx={{ position: 'fixed', bottom: 16, right: 16 }}
-                onClick={() => setIsOpen(!isOpen)}
+            <Fab
+                color="primary"
+                aria-label="chat"
+                sx={{
+                    position: 'fixed',
+                    bottom: 16,
+                    right: 16,
+                    zIndex: 1000
+                }}
+                onClick={() => {
+                    // If chat is open, use onClose to close it
+                    if (open) {
+                        onClose();
+                    } 
+                    // If chat is closed, use the global toggle function to open it
+                    else if (window.toggleChatFromFloatingButton) {
+                        window.toggleChatFromFloatingButton();
+                    }
+                }}
             >
-                {isOpen ? <Close /> : <Chat />}
+                {open ? <Close /> : <Chat />}
             </Fab>
 
-            <Collapse in={isOpen}>
+            <Collapse in={open}>
                 <Paper
                     sx={{
                         position: 'fixed',
@@ -82,40 +96,44 @@ function ChatBot({ open, onClose, onFlowSuggestion, currentSheet }) {
                         height: 500,
                         display: 'flex',
                         flexDirection: 'column',
-                        p: 2
+                        p: 2,
+                        zIndex: 1100,
+                        boxShadow: 3
                     }}
                 >
                     <Typography variant="h6" gutterBottom>ETL Assistant</Typography>
                     
                     <List sx={{ flex: 1, overflow: 'auto' }}>
-                        {messages.map((msg, idx) => (
-                            <ListItem key={idx} sx={{ 
-                                justifyContent: msg.type === 'user' ? 'flex-end' : 'flex-start' 
-                            }}>
-                                <Paper sx={{ 
-                                    p: 1, 
-                                    bgcolor: msg.type === 'user' ? 'primary.light' : 'grey.100',
-                                    maxWidth: '80%' 
-                                }}>
-                                    <ListItemText primary={msg.text} />
-                                    {msg.action ? (
-                                        <Button
-                                            variant="contained"
-                                            size="small"
-                                            onClick={msg.action.onClick}
-                                            startIcon={<Add />}
-                                        >
-                                            {msg.action.label}
-                                        </Button>
-                                    ) : msg.flowSuggestion && (
-                                        <IconButton 
-                                            size="small" 
-                                            onClick={() => onFlowSuggestion(msg.flowSuggestion)}
-                                        >
-                                            <Add /> Generate Flow
-                                        </IconButton>
-                                    )}
+                        {messages.map((msg, index) => (
+                            <ListItem 
+                                key={index}
+                                sx={{ 
+                                    flexDirection: 'column',
+                                    alignItems: msg.type === 'user' ? 'flex-end' : 'flex-start',
+                                    mb: 1
+                                }}
+                            >
+                                <Paper 
+                                    sx={{ 
+                                        p: 1, 
+                                        bgcolor: msg.type === 'user' ? '#e3f2fd' : '#f5f5f5',
+                                        maxWidth: '80%'
+                                    }}
+                                >
+                                    <Typography variant="body2">{msg.text}</Typography>
                                 </Paper>
+                                
+                                {msg.flowSuggestion && (
+                                    <Button 
+                                        size="small" 
+                                        variant="outlined" 
+                                        sx={{ mt: 1 }}
+                                        onClick={() => onFlowSuggestion(msg.flowSuggestion)}
+                                    >
+                                        <Add fontSize="small" sx={{ mr: 0.5 }} />
+                                        Apply Suggestion
+                                    </Button>
+                                )}
                             </ListItem>
                         ))}
                         <div ref={messagesEndRef} />

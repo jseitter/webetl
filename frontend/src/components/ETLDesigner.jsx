@@ -40,6 +40,11 @@ function ETLDesigner() {
   const [chatOpen, setChatOpen] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState({ open: false, sheetId: null });
 
+  // Add a console log to debug chat state
+  useEffect(() => {
+    console.log("Chat open state changed:", chatOpen);
+  }, [chatOpen]);
+
   // Check backend health periodically
   useEffect(() => {
     const checkHealth = async () => {
@@ -313,6 +318,22 @@ function ETLDesigner() {
     setActiveSheet(Math.max(0, activeSheet - 1));
   };
 
+  // Add a function to toggle chat
+  const toggleChat = () => {
+    console.log("Toggling chat from:", chatOpen, "to:", !chatOpen);
+    setChatOpen(prevState => !prevState);
+  };
+
+  // Expose the toggleChat function globally for the floating button
+  useEffect(() => {
+    window.toggleChatFromFloatingButton = toggleChat;
+    
+    // Cleanup function to remove the global reference when component unmounts
+    return () => {
+      delete window.toggleChatFromFloatingButton;
+    };
+  }, []);
+
   return (
     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <AppBar position="static">
@@ -499,9 +520,18 @@ function ETLDesigner() {
           </span>
         </Tooltip>
         <Tooltip title="AI Assistant">
-          <IconButton onClick={() => setChatOpen(true)}>
-            <SmartToyIcon />
-          </IconButton>
+          <span>
+            <IconButton 
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleChat();
+              }}
+              color="primary"
+              sx={{ mr: 1 }}
+            >
+              <SmartToyIcon />
+            </IconButton>
+          </span>
         </Tooltip>
       </Box>
       {sheets.map((sheet, index) => (
