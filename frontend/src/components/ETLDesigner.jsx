@@ -4,8 +4,10 @@ import SaveIcon from '@mui/icons-material/Save';
 import BuildIcon from '@mui/icons-material/Build';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddIcon from '@mui/icons-material/Add';
+import CodeIcon from '@mui/icons-material/Code';
 import Sheet from './Sheet';
 import CompileDialog from './CompileDialog';
+import JsonViewDialog from './JsonViewDialog';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -32,6 +34,7 @@ function ETLDesigner() {
   const [editingSheetName, setEditingSheetName] = useState(false);
   const [sheetName, setSheetName] = useState('');
   const [compileDialogOpen, setCompileDialogOpen] = useState(false);
+  const [jsonViewDialogOpen, setJsonViewDialogOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState({ open: false, sheetId: null });
 
@@ -80,12 +83,15 @@ function ETLDesigner() {
   useEffect(() => {
     if (sheets.length > 0 && activeSheet < sheets.length) {
       setCurrentSheet(sheets[activeSheet]);
-      setSheetName(sheets[activeSheet].name);
+      // Only update sheetName if we're not currently editing
+      if (!editingSheetName) {
+        setSheetName(sheets[activeSheet].name);
+      }
     } else if (sheets.length === 0) {
       setCurrentSheet(null);
       setSheetName('');
     }
-  }, [activeSheet, sheets]);
+  }, [activeSheet, sheets, editingSheetName]);
 
   const loadSheets = async () => {
     try {
@@ -319,19 +325,43 @@ function ETLDesigner() {
           
           {currentSheet ? (
             editingSheetName ? (
-              <Box sx={{ display: 'flex', alignItems: 'center', ml: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', ml: 2 }}
+                   onClick={(e) => e.stopPropagation()}>
                 <TextField
                   value={sheetName}
                   onChange={(e) => setSheetName(e.target.value)}
+                  onKeyDown={(e) => {
+                    e.stopPropagation(); // Prevent key events from bubbling up
+                    if (e.key === 'Enter') {
+                      handleSheetNameSave();
+                    } else if (e.key === 'Escape') {
+                      setEditingSheetName(false);
+                    }
+                  }}
+                  autoFocus
                   size="small"
                   sx={{ backgroundColor: 'white' }}
+                  onClick={(e) => e.stopPropagation()}
                 />
                 <Button 
                   color="inherit" 
-                  onClick={handleSheetNameSave}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSheetNameSave();
+                  }}
                   sx={{ ml: 1 }}
                 >
                   Save
+                </Button>
+                <Button 
+                  color="inherit" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingSheetName(false);
+                  }}
+                  sx={{ ml: 1 }}
+                >
+                  Cancel
                 </Button>
               </Box>
             ) : (
@@ -425,6 +455,21 @@ function ETLDesigner() {
             </IconButton>
           </span>
         </Tooltip>
+        <Tooltip title="View JSON Source">
+          <span>
+            <IconButton
+              onClick={() => {
+                if (sheets[activeSheet]) {
+                  setJsonViewDialogOpen(true);
+                }
+              }}
+              disabled={!isBackendAvailable || !sheets[activeSheet]}
+              sx={{ mr: 1 }}
+            >
+              <CodeIcon />
+            </IconButton>
+          </span>
+        </Tooltip>
         <Tooltip title="Save (Ctrl+S)">
           <span>
             <IconButton 
@@ -475,6 +520,14 @@ function ETLDesigner() {
         <CompileDialog
           open={compileDialogOpen}
           onClose={() => setCompileDialogOpen(false)}
+          sheetId={sheets[activeSheet].id}
+          projectId={projectId}
+        />
+      )}
+      {sheets.length > 0 && activeSheet < sheets.length && (
+        <JsonViewDialog
+          open={jsonViewDialogOpen}
+          onClose={() => setJsonViewDialogOpen(false)}
           sheetId={sheets[activeSheet].id}
           projectId={projectId}
         />
