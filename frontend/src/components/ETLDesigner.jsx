@@ -7,6 +7,7 @@ import AddIcon from '@mui/icons-material/Add';
 import CodeIcon from '@mui/icons-material/Code';
 import Sheet from './Sheet';
 import CompileDialog from './CompileDialog';
+import RunDialog from './RunDialog';
 import JsonViewDialog from './JsonViewDialog';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
@@ -34,6 +35,7 @@ function ETLDesigner() {
   const [editingSheetName, setEditingSheetName] = useState(false);
   const [sheetName, setSheetName] = useState('');
   const [compileDialogOpen, setCompileDialogOpen] = useState(false);
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [jsonViewDialogOpen, setJsonViewDialogOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState({ open: false, sheetId: null });
@@ -455,6 +457,21 @@ function ETLDesigner() {
             </IconButton>
           </span>
         </Tooltip>
+        <Tooltip title="Run Flow">
+          <span>
+            <IconButton
+              onClick={() => {
+                if (sheets[activeSheet]) {
+                  setRunDialogOpen(true);
+                }
+              }}
+              disabled={!isBackendAvailable || !sheets[activeSheet]}
+              sx={{ mr: 1 }}
+            >
+              <PlayArrowIcon />
+            </IconButton>
+          </span>
+        </Tooltip>
         <Tooltip title="View JSON Source">
           <span>
             <IconButton
@@ -520,6 +537,14 @@ function ETLDesigner() {
         <CompileDialog
           open={compileDialogOpen}
           onClose={() => setCompileDialogOpen(false)}
+          sheetId={sheets[activeSheet].id}
+          projectId={projectId}
+        />
+      )}
+      {sheets.length > 0 && activeSheet < sheets.length && (
+        <RunDialog
+          open={runDialogOpen}
+          onClose={() => setRunDialogOpen(false)}
           sheetId={sheets[activeSheet].id}
           projectId={projectId}
         />

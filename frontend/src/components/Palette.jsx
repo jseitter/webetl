@@ -16,10 +16,12 @@ const iconMap = {
   'FileIcon': InsertDriveFileIcon,
   'DatabaseIcon': StorageIcon,
   'FilterIcon': FilterAltIcon,
-  'MapIcon': TransformIcon
+  'MapIcon': TransformIcon,
+  'PlayArrowIcon': PlayArrowIcon,
+  'StopIcon': StopIcon
 };
 
-function Palette({ isExecuting, onExecute, onStop }) {
+function Palette() {
   const [componentGroups, setComponentGroups] = useState({});
   const [openSections, setOpenSections] = useState({
     controlFlow: true,
@@ -119,54 +121,13 @@ function Palette({ isExecuting, onExecute, onStop }) {
     }
   ];
 
-  // Add PlayArrowIcon and StopIcon to iconMap
-  const extendedIconMap = {
-    ...iconMap,
-    'PlayArrowIcon': PlayArrowIcon,
-    'StopIcon': StopIcon
-  };
-
   const getIcon = (iconName) => {
-    const IconComponent = extendedIconMap[iconName] || StorageIcon;
+    const IconComponent = iconMap[iconName] || StorageIcon;
     return <IconComponent />;
   };
 
   return (
     <Paper sx={{ width: 240, overflow: 'auto' }}>
-      {/* Execution Controls */}
-      <div style={{
-        padding: '8px',
-        display: 'flex',
-        justifyContent: 'center',
-        gap: '8px',
-        borderBottom: '1px solid rgba(0, 0, 0, 0.12)'
-      }}>
-        <IconButton 
-          color="primary"
-          disabled={isExecuting}
-          onClick={onExecute}
-          size="small"
-          sx={{ 
-            backgroundColor: isExecuting ? 'transparent' : '#e3f2fd',
-            '&:hover': { backgroundColor: '#bbdefb' }
-          }}
-        >
-          <PlayArrowIcon />
-        </IconButton>
-        <IconButton 
-          color="error"
-          disabled={!isExecuting}
-          onClick={onStop}
-          size="small"
-          sx={{ 
-            backgroundColor: !isExecuting ? 'transparent' : '#fbe9e7',
-            '&:hover': { backgroundColor: '#ffccbc' }
-          }}
-        >
-          <StopIcon />
-        </IconButton>
-      </div>
-
       {/* Control Flow Section */}
       <ListItem 
         button 
